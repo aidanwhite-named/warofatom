@@ -10,6 +10,7 @@
     "elements": "tsx src/sim/elements.ts",
     "card": "tsx src/balance/card.ts",
     "card:ui": "vite src/balance/ui",
+    "play": "vite src/web",
     "calibrate": "tsx src/balance/calibrate.ts",
     "typecheck": "tsc --noEmit"
   },
