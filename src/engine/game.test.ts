@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { getCard } from '../data/cards';
 import { getLand, LANDS } from '../data/lands';
 import { DECK_LIST, DECKS } from '../data/decks';
-import { applyAction, costOf, createGame, legalActions, validateDeck } from './game';
+import { applyAction, costOf, createGame, foreignTax, legalActions, validateDeck } from './game';
 import { BALANCE } from './config';
 import { ops } from './effects';
 import type { CardDef, GameState } from './types';
@@ -156,28 +156,27 @@ describe('deck building (객원)', () => {
     expect(validateDeck({ faction: 'covalent', cards: base.slice(1) })).toHaveLength(1);
     const copies = [...base.slice(0, 20), ...Array(4).fill('abbey_wall')];
     expect(validateDeck({ faction: 'covalent', cards: copies }).some((e) => e.includes('같은 카드'))).toBe(true);
-    const guests = [...base.slice(0, 19), 'ash_raider', 'ash_raider', 'spark_archer', 'spark_archer', 'gale_blade'];
+    const extra = ['ash_raider', 'ash_raider', 'ash_raider', 'spark_archer', 'spark_archer', 'spark_archer', 'gale_blade'].slice(0, BALANCE.deck.guestMax + 1);
+    const guests = [...base.slice(0, BALANCE.deck.size - extra.length), ...extra];
     expect(validateDeck({ faction: 'covalent', cards: guests }).some((e) => e.includes('객원 카드는'))).toBe(true);
     const spell = [...base.slice(0, 23), 'sp_fireball'];
     expect(validateDeck({ faction: 'covalent', cards: spell }).some((e) => e.includes('종류'))).toBe(true);
   });
 
-  it('a guest unit pays the discord penalty unless its race land is held', () => {
-    let s = createGame(DECKS.covalent, DECKS.union, 1);
+  it('a guest card pays the color tax unless a land of its faction is held', () => {
+    const s = createGame(DECKS.covalent, DECKS.union, 1);
     const pl = s.players[0];
+    const def = getCard('ash_raider');
+    expect(foreignTax(pl, def)).toBeGreaterThan(0);
+    expect(costOf(s, pl, def)).toBe(def.level + foreignTax(pl, def));
     pl.pool = 10;
-    expect(costOf(s, pl, getCard('ash_raider'))).toBe(2 + BALANCE.deck.guestCost);
     const [g] = giveHand(s, 0, ['ash_raider']);
     const ent = pl.entropy;
-    s = applyAction(s, { type: 'play', uid: g, lane: 0 });
-    expect(s.players[0].entropy).toBe(ent + BALANCE.deck.guestEntropy);
+    expect(applyAction(s, { type: 'play', uid: g, lane: 0 }).players[0].entropy).toBe(ent); // 파멸 벌칙은 없다
 
     const t = createGame(DECKS.covalent, DECKS.union, 1);
-    t.players[0].pool = 10;
     t.players[0].elements = ['ember_hill']; // 화염술사의 대지: 현지 협력
-    const [g2] = giveHand(t, 0, ['ash_raider']);
-    const ent2 = t.players[0].entropy;
-    expect(applyAction(t, { type: 'play', uid: g2, lane: 0 }).players[0].entropy).toBe(ent2);
+    expect(foreignTax(t.players[0], def)).toBe(0);
   });
 
   it('a guest union unit loses its chain', () => {
