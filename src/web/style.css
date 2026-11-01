@@ -130,7 +130,10 @@ main { padding: 24px; max-width: 1280px; margin: 0 auto; }
 .s.cost b { font-size: 1.8em; color: #fff; }
 .s.cost.down b { color: #7dffa8; }
 .s.cost.up b { color: #ff9a7a; }
-.s.atk b { color: #ffc861; } .s.hp b { color: #ff7a7a; } .s.arm b { color: #9ec5ff; } .s.res b { color: #d7b5ff; }
+.s.atk b { color: #ffc861; } .s.hp b { color: #ff7a7a; } .s.arm b { color: #9ec5ff; }
+/* 저항: 세로줄 수치가 아니라 능력 글 쪽에 보라색 표식으로 (카드 글·전장 유닛 배지 공용) */
+.kw-res { font-weight: 800; color: #e6d2ff; background: #6a3fb4aa; border: .08em solid #b48cff; border-radius: .3em; padding: 0 .3em; white-space: nowrap; }
+.u-badges i.kw-res { background: #6a3fb4dd; color: #f0e4ff; border: 1px solid #b48cff; }
 .k-item .s b { font-size: 1.3em; }
 .c-body { position: absolute; left: 2.5em; right: 0; bottom: 0; padding: 2.2em .6em .6em .3em; z-index: 2;
   background: linear-gradient(transparent, #000d 2.2em); display: flex; flex-direction: column; gap: .15em; }
@@ -241,6 +244,17 @@ main { padding: 24px; max-width: 1280px; margin: 0 auto; }
 .unit.ready { box-shadow: 0 0 0 3px #52d68a, 0 0 22px #52d68a; animation: ready 1.3s infinite; }
 @keyframes ready { 50% { box-shadow: 0 0 0 3px #52d68a, 0 0 34px #52d68a; } }
 .unit.selected { box-shadow: 0 0 0 3px var(--gold), 0 0 28px var(--gold); transform: translateY(-6px); }
+/* 소멸 카드·유닛: 보라빛 테두리, 재가 위로 흩어진다. 마지막 턴이면 그림이 깜빡이며 꺼져 간다 */
+.card.hl, .unit.hl { border-color: #b483ff; }
+.card.hl::after, .unit.hl::after { content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none; animation: ash 2.6s linear infinite;
+  background: radial-gradient(circle at 18% 92%, #d6b4ffaa 0 2px, transparent 3px), radial-gradient(circle at 62% 84%, #c79bff99 0 1.5px, transparent 3px),
+    radial-gradient(circle at 44% 97%, #ffffffaa 0 1px, transparent 2px), radial-gradient(circle at 86% 90%, #d6b4ff99 0 2px, transparent 3px), linear-gradient(transparent 70%, #7a4fc433); }
+@keyframes ash { from { background-position: 0 0; opacity: .95; } to { background-position: 0 -60px; opacity: .35; } }
+.card .c-hl.term { position: absolute; top: .45em; left: 2.8em; z-index: 3; font-size: .68em; font-weight: 800; color: #f0e4ff; background: #4a2a80dd; border: .1em solid #b483ff; border-radius: .4em; padding: .05em .45em; white-space: nowrap; }
+.u-badges i.hl-badge { background: #4a2a80dd; color: #f0e4ff; border: 1px solid #b483ff; }
+.unit.hl-last .u-badges i.hl-badge { background: #c79bff; color: #1a0b33; }
+.unit.hl-last .u-art { animation: hlFade 1.4s ease-in-out infinite; }
+@keyframes hlFade { 50% { opacity: .45; filter: saturate(.3) brightness(1.4) hue-rotate(25deg); } }
 .unit.sick .u-art { filter: saturate(.6) brightness(.85); }
 .zzz { position: absolute; right: 8px; top: 18px; font-weight: 900; color: #cfe0ff; font-size: 14px; animation: zzz 2s infinite; }
 .zzz span { font-size: 10px; }
@@ -294,6 +308,12 @@ main { padding: 24px; max-width: 1280px; margin: 0 auto; }
 
 .preview { position: absolute; z-index: 60; pointer-events: none; opacity: 0; transition: opacity .12s; display: flex; flex-direction: column; gap: 8px; }
 .preview.show { opacity: 1; }
+.preview .term { pointer-events: auto; }
+.term { cursor: help; }
+.term:not(.kw-res) { border-bottom: 1px dotted currentColor; font-weight: 800; color: #ffd9a0; }
+.term-tip { position: fixed; z-index: 1000; max-width: 240px; padding: 8px 10px; border-radius: 9px; background: #05070cf2; border: 1px solid #ffffff33; box-shadow: 0 8px 20px #000c;
+  font-size: 12px; line-height: 1.45; color: #e6e9f2; pointer-events: none; opacity: 0; }
+.term-tip.show { opacity: 1; }
 .status { width: 230px; background: #000d; border: 1px solid #ffffff22; border-radius: 10px; padding: 8px 10px; font-size: 12px; }
 .status b { display: block; margin-bottom: 2px; }
 

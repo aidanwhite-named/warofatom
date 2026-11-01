@@ -10,8 +10,8 @@ export const DECKS: Record<Faction, DeckSpec> = {
   union: {
     faction: 'union',
     cards: [
-      ...x(1, 'ember_scout'), ...x(1, 'shield_merc'), ...x(2, 'flame_runner'), ...x(2, 'blast_adept'), ...x(1, 'gorge_guard'),
-      ...x(2, 'quarry_mason'), ...x(2, 'spark_archer'), ...x(2, 'gale_blade'), ...x(2, 'smoke_igniter'),
+      ...x(1, 'ember_scout'), ...x(3, 'shield_merc'), ...x(2, 'flame_runner'), ...x(3, 'gorge_guard'),
+      ...x(2, 'quarry_mason'), ...x(1, 'gale_blade'), ...x(1, 'gorge_shieldwall'), ...x(2, 'smoke_igniter'),
       ...x(2, 'sulfur_brute'), ...x(2, 'storm_caller'), ...x(1, 'inferno_master'), ...x(1, 'giant_captain'),
       ...x(1, 'sp_fireball'), ...x(1, 'sp_omen'), ...x(1, 'sp_siege'),
     ],
@@ -29,7 +29,7 @@ export const DECKS: Record<Faction, DeckSpec> = {
     faction: 'decay',
     cards: [
       ...x(3, 'beacon_wisp'), ...x(3, 'star_acolyte'), ...x(2, 'bone_seer'), ...x(2, 'soul_lantern'),
-      ...x(2, 'well_oracle'), ...x(2, 'bog_wraith'), ...x(3, 'grave_herald'), ...x(2, 'rift_flicker'),
+      ...x(2, 'well_oracle'), ...x(1, 'bog_wraith'), ...x(1, 'bone_bulwark'), ...x(2, 'grave_herald'), ...x(1, 'crypt_warden'), ...x(2, 'rift_flicker'),
       ...x(2, 'tomb_martyr'), ...x(2, 'doom_reaper'), ...x(1, 'void_titan'),
     ],
   },
@@ -50,9 +50,9 @@ export const RACE_DECKS: PresetDeck[] = [
     spec: {
       faction: 'union',
       cards: [
-        ...x(2, 'ember_scout'), ...x(2, 'flame_runner'), ...x(2, 'blast_adept'), ...x(2, 'ash_raider'), ...x(2, 'flash_burner'),
+        ...x(2, 'ember_scout'), ...x(2, 'flame_runner'), ...x(2, 'blast_adept'), ...x(1, 'ash_raider'), ...x(1, 'shield_merc'), ...x(2, 'flash_burner'),
         ...x(2, 'sp_fireball'), ...x(1, 'sp_corrode'), ...x(2, 'sp_blast'), ...x(2, 'smoke_igniter'), ...x(1, 'alembic_keeper'),
-        ...x(2, 'sulfur_brute'), ...x(2, 'powder_thrower'), ...x(1, 'poison_brewer'), ...x(1, 'inferno_master'),
+        ...x(1, 'sulfur_brute'), ...x(1, 'alch_bulwark'), ...x(2, 'powder_thrower'), ...x(1, 'poison_brewer'), ...x(1, 'inferno_master'),
       ],
     },
   },
@@ -72,10 +72,12 @@ export const RACE_DECKS: PresetDeck[] = [
     spec: {
       faction: 'covalent',
       cards: [
-        ...x(2, 'abbey_wall'), ...x(1, 'thorn_witch'), ...x(1, 'forged_soldier'), ...x(3, 'iron_warden'), ...x(1, 'abbey_ballista'),
-        ...x(2, 'obsidian_golem'), ...x(2, 'it_holy_shield'), ...x(2, 'bronze_preacher'), ...x(2, 'steel_knight'), ...x(1, 'thorn_witch'),
-        ...x(3, 'oath_lancer'), ...x(1, 'it_oath_plate'), ...x(2, 'bastion_colossus'),
-        ...x(1, 'oath_breaker'),
+        // 싼 방어 유닛으로 판을 비우지 않고 버티다가, 성기사 대지(4등급)를 잡아 Lv6~7 거상·파쇄자로 마무리한다.
+        // 신앙을 먹는 유지비 카드(흑요석 골렘, 서약 창기병)는 뺐다
+        ...x(2, 'abbey_wall'), ...x(2, 'forged_soldier'), ...x(2, 'hermit_sentinel'),
+        ...x(3, 'iron_warden'), ...x(2, 'abbey_gatekeeper'), ...x(1, 'it_holy_shield'), ...x(1, 'abbey_ballista'),
+        ...x(2, 'steel_knight'), ...x(1, 'bronze_preacher'), ...x(2, 'thorn_witch'), ...x(1, 'it_oath_plate'),
+        ...x(2, 'rampart_knight'), ...x(2, 'bastion_colossus'), ...x(1, 'oath_breaker'),
       ],
     },
   },
@@ -94,8 +96,8 @@ export const RACE_DECKS: PresetDeck[] = [
     spec: {
       faction: 'decay',
       cards: [
-        ...x(3, 'beacon_wisp'), ...x(2, 'star_acolyte'), ...x(1, 'bone_seer'), ...x(3, 'frenzied_zealot'), ...x(2, 'flagellant'),
-        ...x(2, 'abyss_phantom'), ...x(3, 'grave_herald'), ...x(2, 'cult_raider'), ...x(2, 'rift_flicker'), ...x(1, 'tomb_martyr'),
+        ...x(3, 'beacon_wisp'), ...x(2, 'star_acolyte'), ...x(1, 'bone_seer'), ...x(3, 'frenzied_zealot'), ...x(1, 'flagellant'), ...x(1, 'bone_bulwark'),
+        ...x(2, 'abyss_phantom'), ...x(2, 'grave_herald'), ...x(1, 'crypt_warden'), ...x(2, 'cult_raider'), ...x(2, 'rift_flicker'), ...x(1, 'tomb_martyr'),
         ...x(1, 'altar_reaper'), ...x(1, 'doom_reaper'), ...x(1, 'void_titan'),
       ],
     },
@@ -106,8 +108,8 @@ export const RACE_DECKS: PresetDeck[] = [
       faction: 'decay',
       cards: [
         ...x(2, 'beacon_wisp'), ...x(1, 'drifting_shade'), ...x(2, 'star_acolyte'), ...x(2, 'bone_seer'),
-        ...x(2, 'soul_lantern'), ...x(2, 'grave_herald'), ...x(1, 'doom_reaper'), ...x(1, 'grave_veil'), ...x(2, 'well_oracle'), ...x(2, 'bog_wraith'),
-        ...x(1, 'pale_ghost'), ...x(1, 'curse_weaver'), ...x(1, 'rune_warden'), ...x(1, 'moon_oracle'), ...x(1, 'fate_hunter'),
+        ...x(2, 'soul_lantern'), ...x(1, 'grave_herald'), ...x(1, 'crypt_warden'), ...x(1, 'doom_reaper'), ...x(2, 'grave_veil'), ...x(2, 'well_oracle'), ...x(2, 'bog_wraith'),
+        ...x(1, 'pale_ghost'), ...x(1, 'curse_weaver'), ...x(1, 'moon_oracle'), ...x(1, 'fate_hunter'),
         // 점술사·망령엔 L6 이상이 없어 소멸 대형 유닛을 내는 교단 덱에 밀린다 → 다른 종족 마무리 2장
         ...x(1, 'tomb_martyr'), ...x(1, 'void_titan'),
       ],

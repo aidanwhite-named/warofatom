@@ -55,6 +55,9 @@ export const CARDS: CardDef[] = [
     { effects: [{ trigger: 'onDeath', op: 'entropy', args: { n: 3 } }], text: '파괴 시: 상대 파멸 +3' }),
   u('poison_brewer', '독약 제조사', 'union', '연금술사', null, 5, 5, 4,
     { keywords: ['halfLife:3'], effects: [{ trigger: 'onPlay', op: 'entropy', args: { n: 2 } }], text: '소멸 3. 소환: 상대 파멸 +2' }),
+  // 방어 위주: 공격력은 낮고 체력·방어력이 높아 공격을 받아내고 반격한다
+  u('gorge_shieldwall', '협곡 방패벽', 'union', '용병', 'iron_gorge', 3, 1, 4, { keywords: ['armor:1'], text: '방어력 1' }),
+  u('alch_bulwark', '연금 방벽술사', 'union', '연금술사', 'sulfur_spring', 4, 1, 5, { keywords: ['armor:1', 'resist:1'], text: '방어력 1. 저항 1' }),
   u('sp_insight', '번뜩이는 통찰', 'union', '폭풍술사', 'storm_cliff', 1, 0, 0,
     { kind: 'spell', effects: [{ trigger: 'onPlay', op: 'draw', args: { n: 1 } }], text: '주문: 1장 드로우' }),
   u('sp_corrode', '부식 안개', 'union', '연금술사', 'smoke_vale', 2, 0, 0,
@@ -107,6 +110,9 @@ export const CARDS: CardDef[] = [
   u('it_hawk_eye', '매의 눈', 'covalent', '숲지기', 'mist_wood', 2, 2, 0,
     { kind: 'item', effects: [{ trigger: 'onPlay', op: 'draw', args: { n: 1 } }], text: '장착: +2/+0. 1장 드로우' }),
   u('it_holy_shield', '성스러운 방패', 'covalent', '성기사', null, 3, 0, 3, { kind: 'item', keywords: ['armor:2'], text: '장착: +0/+3, 방어력 2' }),
+  // 방어 위주
+  u('abbey_gatekeeper', '수도원 문지기', 'covalent', '수도사', 'crystal_abbey', 3, 1, 4, { keywords: ['armor:1'], text: '방어력 1' }),
+  u('rampart_knight', '성벽 수호기사', 'covalent', '성기사', 'bronze_gate', 5, 2, 7, { keywords: ['armor:1'], text: '방어력 1' }),
 
   // ── 검은 달 교단: 제물로 기습 소환, 소멸 ──
   u('beacon_wisp', '등대 도깨비불', 'decay', '망령', 'ghost_beacon', 1, 1, 2),
@@ -156,11 +162,14 @@ export const CARDS: CardDef[] = [
     { keywords: ['halfLife:2'], effects: [{ trigger: 'onDeath', op: 'strikeOpposite', args: { n: 4 } }, { trigger: 'onDeath', op: 'entropy', args: { n: 2 } }], text: '소멸 2. 파괴 시: 맞은편 적 4 피해, 상대 파멸 +2' }),
   u('void_storm', '공허의 폭풍', 'decay', '심연체', null, 8, 11, 10,
     { upkeep: 2, keywords: ['halfLife:2'], effects: [{ trigger: 'onPlay', op: 'strikeOpposite', args: { n: 2 } }], text: '소멸 2. 소환: 맞은편 적 2 피해' }),
+  // 방어 위주: 교단은 방어력 대신 체력과 저항으로 버틴다
+  u('bone_bulwark', '뼈 장벽', 'decay', '망령', 'silent_cemetery', 3, 1, 5, { keywords: ['resist:1'], text: '저항 1' }),
+  u('crypt_warden', '납골당 수호령', 'decay', '망령', 'ghost_beacon', 4, 2, 6, { keywords: ['resist:1'], text: '저항 1' }),
 ];
 
 // 베이스 카드: 진영마다 하나. 효과는 같고 이름만 다르다 (카드 도감에는 나오지 않고 덱 구성에서 장수만 고른다)
 const base = (faction: Faction, name: string, res: string): CardDef =>
-  ({ id: `base_${faction}`, name, faction, race: '베이스', level: 0, atk: 0, hp: 0, kind: 'base', text: `매 턴 시작에 ${res} +1 (1턴 1장, 2턴 2장… 턴 번호만큼 설치)` });
+  ({ id: `base_${faction}`, name, faction, race: '베이스', level: 0, atk: 0, hp: 0, kind: 'base', text: `매 턴 시작에 ${res} +1 (설치 횟수는 턴마다 1회 생기고, 안 쓰면 쌓인다)` });
 export const BASE_CARDS: CardDef[] = [base('union', '마탑 금고', '금화'), base('covalent', '기사단 성소', '신앙'), base('decay', '교단 제단', '영혼')];
 
 const byId = new Map([...CARDS, ...BASE_CARDS].map((c) => [c.id, c]));

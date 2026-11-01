@@ -151,10 +151,22 @@ export class Fx {
     });
   }
 
-  // el을 빛나게 한 뒤 작아지며 target 쪽으로 빨려 들어가게 하고, 그 뒤를 구슬이 따라간다 (제물)
-  async absorb(el: HTMLElement, target: Element, color: string, ms = 520) {
+  // el을 빛나게 한 뒤 작아지며 target 쪽으로 빨려 들어가게 하고, 그 뒤를 영혼 구슬 여러 개가 줄지어 따라간다 (제물).
+  // 다 들어가면 target이 고리와 빛으로 한 번 크게 번쩍인다
+  async absorb(el: HTMLElement, target: HTMLElement, color: string, ms = 520) {
     await anim(el, [{ filter: 'none' }, { filter: `brightness(1.8) drop-shadow(0 0 14px ${color})` }], { duration: 220, fill: 'forwards' });
-    await Promise.all([this.moveTo(el, target, 0.18, true, ms), sleep(ms * 0.35).then(() => this.orb(el, target, color))]);
+    const from = this.center(el);
+    const wisps = [0, 1, 2, 3].map((i) => sleep(ms * 0.2 + i * 110).then(async () => {
+      const d = this.spawn('', from.x + (Math.random() - 0.5) * 40, from.y + (Math.random() - 0.5) * 40, 'orb');
+      d.style.setProperty('--c', color);
+      await this.moveTo(d, target, 0.5, false, 380);
+      d.remove();
+    }));
+    await Promise.all([this.moveTo(el, target, 0.18, true, ms), ...wisps]);
+    const b = this.center(target);
+    this.ring(b.x, b.y, color, 170);
+    this.sparks(b.x, b.y, color, 18, 70);
+    void anim(target, [{ boxShadow: `0 0 0 0 ${color}00` }, { boxShadow: `0 0 26px 8px ${color}`, offset: 0.3 }, { boxShadow: `0 0 0 0 ${color}00` }], { duration: 800 });
   }
 
   async banner(title: string, sub: string, cls: string, ms = 1100) {

@@ -54,7 +54,7 @@ export type PlayerState = {
   lanes: (Unit | null)[];
   pool: number; // 지금 쓸 수 있는 자원 (금화/신앙/영혼)
   bases: number; // 판 위에 깐 베이스 수. 매 턴 시작에 자원 +1씩
-  basesPlaced: number; // 이번 턴에 깐 베이스 수 (한 턴에 낼 수 있는 수는 내 턴 번호만큼)
+  baseRights: number; // 남은 베이스 설치 횟수 (내 턴마다 BALANCE.base.perTurn씩 생기고 안 쓰면 쌓인다)
   borrowed: boolean; // 첫 턴에 미리 당겨 쓴 자원이 있어 다음 턴 시작에 파멸 +1
   unitsPlayedThisTurn: number;
   cardsUsedThisTurn: number; // 손패에서 사용한 장수 (다음 턴 시작에 이만큼 드로우)
@@ -91,7 +91,7 @@ export type Action =
   | { type: 'shuffle' } // 손패를 전부 덱에 섞고 같은 장수를 다시 뽑는다 (파멸 페널티)
   | { type: 'endTurn' };
 
-export type EntropyCause = 'natural' | 'attack' | 'effect' | 'fatigue' | 'overload' | 'idle' | 'shuffle' | 'borrow';
+export type EntropyCause = 'natural' | 'attack' | 'effect' | 'fatigue' | 'overload' | 'idle' | 'shuffle' | 'borrow' | 'land';
 
 export type GameEvent =
   | { t: 'turnStart'; p: 0 | 1; pool: number }
@@ -100,8 +100,9 @@ export type GameEvent =
   | { t: 'base'; p: 0 | 1; total: number }
   | { t: 'attack'; p: 0 | 1; lane: number; at: number; target: 'unit' | 'entropy'; dmg: number } // lane: 공격한 레인, at: 맞은 레인
   | { t: 'counter'; p: 0 | 1; lane: number; at: number; dmg: number } // 공격을 버틴 유닛의 반격 (p = 반격한 쪽)
+  | { t: 'damage'; p: 0 | 1; lane: number; dmg: number; hp: number } // 유닛이 받은 피해 (p = 맞은 쪽, dmg: 방어력·저항을 뺀 값, hp: 남은 체력)
   | { t: 'death'; p: 0 | 1; cardId: string; lane: number; reason: 'combat' | 'halfLife' | 'decay' | 'effect' | 'upkeep' }
-  | { t: 'decay'; p: 0 | 1; cardId: string; gain: number }
+  | { t: 'decay'; p: 0 | 1; cardId: string; gain: number; auto?: true } // auto: 소멸하는 유닛의 자동 제물
   | { t: 'inherit'; p: 0 | 1; cardId: string; lane: number }
   | { t: 'charge'; p: 0 | 1; cardId: string; lane: number }
   | { t: 'capture'; p: 0 | 1; lane: number; element: string }
@@ -111,6 +112,7 @@ export type GameEvent =
   | { t: 'shuffle'; p: 0 | 1; n: number }
   | { t: 'spire'; p: 0 | 1; floors: number } // 첨탑이 쌓인 뒤의 층수
   | { t: 'bombard'; p: 0 | 1; lane: number; dmg: number } // 첨탑 잔불 포격 (lane: 맞은 적 레인)
+  | { t: 'land'; p: 0 | 1; element: string; lane: number | null; n: number } // 대지 보유 효과 (lane: 빛은 회복할 내 레인, 그림자는 맞을 적 레인, 봉인은 null)
   | { t: 'entropy'; p: 0 | 1; amount: number; total: number; cause: EntropyCause }
   | { t: 'win'; p: 0 | 1 };
 

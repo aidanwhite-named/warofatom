@@ -5,6 +5,7 @@ import { DECK_LIST, DECKS } from '../data/decks';
 import { applyAction, costOf, createGame, foreignTax, legalActions, validateDeck } from './game';
 import { BALANCE } from './config';
 import { ops } from './effects';
+import { decayGain } from './resources';
 import type { CardDef, GameState } from './types';
 
 // 손패를 원하는 카드로 바꿔 끼우는 테스트 헬퍼
@@ -121,14 +122,19 @@ describe('bases', () => {
     expect(count(16)).toBe(16);
   });
 
-  it('as many per turn as the turn number, resource each turn start, pool resets to base count', () => {
+  it('one placement per turn, unused placements carry over, resource each turn start', () => {
     let s = createGame(DECKS.covalent, DECKS.union, 1);
-    const [a, b, c] = giveHand(s, 0, ['base_covalent', 'base_covalent', 'base_covalent']);
+    const [a, b, c, d] = giveHand(s, 0, ['base_covalent', 'base_covalent', 'base_covalent', 'base_covalent']);
     s = applyAction(s, { type: 'base', uid: a });
-    expect(() => applyAction(s, { type: 'base', uid: b })).toThrow(); // 첫 턴은 1장
+    expect(() => applyAction(s, { type: 'base', uid: b })).toThrow(); // 1턴: 1장
     expect(s.players[0].bases).toBe(1);
     s = endTurn(endTurn(s));
     expect(s.players[0].pool).toBe(BALANCE.base.income);
+    s = endTurn(endTurn(s)); // 2턴은 깔지 않고 넘긴다
+    s = applyAction(s, { type: 'base', uid: b });
+    s = applyAction(s, { type: 'base', uid: c }); // 3턴: 이월된 1회 + 이번 턴 1회
+    expect(() => applyAction(s, { type: 'base', uid: d })).toThrow();
+    expect(s.players[0].bases).toBe(3);
   });
 
   it('cannot exceed the board limit', () => {
@@ -305,15 +311,31 @@ describe('decay faction', () => {
     expect(s.players[0].lanes[2]?.atk).toBe(11);
   });
 
-  it('half-life unit collapses after N own turns', () => {
+  it('half-life unit collapses after N own turns, sacrificed automatically for soul', () => {
     let s = createGame(DECKS.decay, DECKS.union, 1);
     s.players[0].pool = 9;
-    const [fl] = giveHand(s, 0, ['rift_flicker']); // 소멸 2
+    const [fl] = giveHand(s, 0, ['void_titan']); // 소멸 2
     s = applyAction(s, { type: 'play', uid: fl, lane: 0 });
     s = endTurn(endTurn(s));
     expect(s.players[0].lanes[0]).not.toBeNull();
+    const before = s.log.length;
     s = endTurn(endTurn(s));
     expect(s.players[0].lanes[0]).toBeNull();
+    const fresh = s.log.slice(before);
+    expect(fresh.some((e) => e.t === 'death' && e.p === 0 && e.reason === 'decay')).toBe(true);
+    const half = Math.floor(decayGain.board(9) / BALANCE.decay.expireDiv); // 9 → 4
+    expect(fresh.some((e) => e.t === 'decay' && e.p === 0 && e.auto && e.gain === half)).toBe(true);
+    expect(s.players[0].pool).toBeGreaterThanOrEqual(half);
+  });
+
+  it('other factions just lose an expiring unit (no sacrifice)', () => {
+    let s = createGame(DECKS.union, DECKS.covalent, 1);
+    s.players[0].pool = 9;
+    const [fb] = giveHand(s, 0, ['flash_burner']); // 소멸 2
+    s = applyAction(s, { type: 'play', uid: fb, lane: 0 });
+    s = endTurn(endTurn(endTurn(endTurn(s))));
+    expect(s.log.some((e) => e.t === 'death' && e.p === 0 && e.reason === 'halfLife')).toBe(true);
+    expect(s.log.some((e) => e.t === 'decay')).toBe(false);
   });
 
   it('board decay with heir: onPlay effect fires again from heir lane, onDeath effect is inherited', () => {
@@ -629,6 +651,27 @@ describe('covalent element capture', () => {
     s = endTurn(s);
     expect(s.players[0].elements).toEqual([tile]);
     expect(s.players[0].hand.length).toBe(hand + BALANCE.elements.bondDraw); // 지난 턴 사용 0장 → 턴 드로우 없음, 결합 드로우만
+  });
+});
+
+describe('land hold effects (대지 보유 효과)', () => {
+  it('each owned land fires at my turn start by aspect, strength by tier', () => {
+    let s = createGame(DECKS.covalent, DECKS.covalent, 1);
+    const unit = (uid: number, cardId: string, atk: number, hp: number) => ({ uid, cardId, atk, hp, sick: false, attacked: false });
+    // 빛 강철 성채(4등급) 회복 2, 그림자 흑요석 광산(2등급) 피해 1, 봉인 유령 등대(2등급) 파멸 1 · 공허의 문(7등급) 파멸 2
+    s.players[0].elements = ['steel_bastion', 'obsidian_pit', 'ghost_beacon', 'void_gate'];
+    s.players[0].lanes[0] = unit(901, 'abbey_wall', 0, 1); // 가장 약한 다친 유닛
+    s.players[0].lanes[1] = unit(902, 'abbey_wall', 0, 4);
+    s.players[1].lanes[2] = unit(903, 'steel_knight', 5, 6); // 공격력 최고
+    s.players[1].lanes[3] = unit(904, 'steel_knight', 1, 6);
+    s = endTurn(s);
+    s.players[1].lanes.forEach((u) => { if (u) u.attacked = true; }); // 상대 유닛은 공격하지 않게
+    s = endTurn(s);
+    expect(s.players[0].lanes[0]!.hp).toBe(3);
+    expect(s.players[0].lanes[1]!.hp).toBe(4);
+    expect(s.players[1].lanes[2]!.hp).toBe(5);
+    expect(s.players[1].lanes[3]!.hp).toBe(6);
+    expect(s.log.filter((e) => e.t === 'entropy' && e.cause === 'land').map((e) => e.t === 'entropy' && e.amount)).toEqual([1, 2]);
   });
 });
 

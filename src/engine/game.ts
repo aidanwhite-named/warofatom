@@ -35,7 +35,7 @@ export function createGame(a: DeckSpec, b: DeckSpec, seed = 1): GameState {
       lanes: Array(LANES).fill(null),
       pool: 0,
       bases: 0,
-      basesPlaced: 0,
+      baseRights: 0,
       borrowed: false,
       unitsPlayedThisTurn: 0,
       cardsUsedThisTurn: 0,
@@ -204,15 +204,55 @@ function raiseSpire(s: GameState, p: 0 | 1, n: number) {
   emit(s, { t: 'spire', p, floors: pl.spire });
 }
 
+// 공격력이 가장 높은 적 유닛의 레인 (없으면 null)
+function strongestFoeLane(foe: PlayerState): number | null {
+  return foe.lanes.reduce<number | null>((best, u, i) => (u && (best === null || u.atk > foe.lanes[best]!.atk) ? i : best), null);
+}
+
 // 첨탑 잔불 포격: 공격력이 가장 높은 적 유닛에게 floor(층/bombardPer) 피해 (저항 적용)
 function bombard(s: GameState, p: 0 | 1) {
   const sp = BALANCE.union.spire;
   const dmg = sp.enabled ? Math.floor(s.players[p].spire / sp.bombardPer) : 0;
-  const foe = s.players[1 - p];
-  const lane = foe.lanes.reduce<number | null>((best, u, i) => (u && (best === null || u.atk > foe.lanes[best]!.atk) ? i : best), null);
+  const lane = strongestFoeLane(s.players[1 - p]);
   if (dmg <= 0 || lane === null) return;
   emit(s, { t: 'bombard', p, lane, dmg });
   ops.strikeOpposite({ s, p, lane, unit: null }, { n: dmg });
+}
+
+// 유닛의 최대 체력: 카드 체력 + 장착 장비 체력
+export function maxHp(u: Unit): number {
+  return [u.cardId, ...(u.equipped ?? [])].reduce((a, id) => a + getCard(id).hp, 0);
+}
+
+// 대지 보유 효과의 세기 (2-5절). 빛·그림자는 floor(등급 / div), 봉인은 sealedHighTier 등급 이상이면 2, 아니면 1
+export function landHoldValue(element: string): number {
+  const h = BALANCE.elements.hold, land = getLand(element);
+  return land.aspect === 'sealed' ? (land.tier >= h.sealedHighTier ? 2 : 1) : Math.floor(land.tier / h.div);
+}
+
+// 대지 보유 효과: 내 턴 시작마다 가진 대지 하나하나가 기운에 따라 발동한다
+//   빛: 다친 내 유닛 중 체력이 가장 낮은 유닛 회복 / 그림자: 공격력이 가장 높은 적에게 피해 (저항 적용) / 봉인: 상대 파멸 증가
+function holdLands(s: GameState, p: 0 | 1) {
+  if (!BALANCE.elements.hold.enabled) return;
+  const pl = s.players[p];
+  for (const element of [...pl.elements]) {
+    if (s.winner !== null) return;
+    const n = landHoldValue(element), aspect = getLand(element).aspect;
+    if (aspect === 'light') {
+      const lane = pl.lanes.reduce<number | null>((best, u, i) => (u && u.hp < maxHp(u) && (best === null || u.hp < pl.lanes[best]!.hp) ? i : best), null);
+      if (lane === null) continue;
+      emit(s, { t: 'land', p, element, lane, n });
+      ops.healSelf({ s, p, lane, unit: pl.lanes[lane] }, { n });
+    } else if (aspect === 'shadow') {
+      const lane = strongestFoeLane(s.players[1 - p]);
+      if (lane === null) continue;
+      emit(s, { t: 'land', p, element, lane, n });
+      ops.strikeOpposite({ s, p, lane, unit: null }, { n });
+    } else {
+      emit(s, { t: 'land', p, element, lane: null, n });
+      addEntropy(s, (1 - p) as 0 | 1, n, 'land');
+    }
+  }
 }
 
 export function isLocked(pl: PlayerState, def: CardDef): boolean {
@@ -284,12 +324,22 @@ function gainEnergy(s: GameState, p: 0 | 1, lane: number) {
   runTrigger(s, p, lane, def, 'onCharge', u);
 }
 
+// 소멸하는 교단 유닛의 자동 제물: 마지막 공격까지 한 뒤라 손으로 바치는 유닛 제물의 1/expireDiv(내림)만 얻는다. 빙의는 없다
+function sacrificeExpiring(s: GameState, p: 0 | 1, lane: number) {
+  const pl = s.players[p], cardId = pl.lanes[lane]!.cardId;
+  const gain = Math.floor(decayGain.board(getCard(cardId).level) / BALANCE.decay.expireDiv);
+  destroyUnit(s, p, lane, 'decay');
+  pl.pool += gain;
+  emit(s, { t: 'decay', p, cardId, gain, auto: true });
+  for (let i = 0; i < BALANCE.decay.decayDraw; i++) drawCard(s, p);
+}
+
 function startTurn(s: GameState) {
   const p = s.active;
   const pl = s.players[p];
   s.turn++;
   pl.turns++;
-  pl.basesPlaced = 0;
+  pl.baseRights += BALANCE.base.perTurn;
   pl.unitsPlayedThisTurn = 0;
   pl.cardsUsedLastTurn = pl.cardsUsedThisTurn;
   pl.cardsUsedThisTurn = 0;
@@ -308,7 +358,11 @@ function startTurn(s: GameState) {
     if (!u) return;
     u.sick = false;
     u.attacked = false;
-    if (u.halfLife !== undefined && --u.halfLife <= 0) destroyUnit(s, p, lane, 'halfLife');
+    // 소멸: 교단은 사라지는 유닛을 자동으로 제물로 바쳐 영혼을 얻는다 (다른 세력은 그냥 사라진다)
+    if (u.halfLife !== undefined && --u.halfLife <= 0) {
+      if (pl.faction === 'decay') sacrificeExpiring(s, p, lane);
+      else destroyUnit(s, p, lane, 'halfLife');
+    }
     // 유지비: 레인 순서대로 지불, 자원이 모자라면 그 유닛은 파괴
     const upkeep = pl.lanes[lane] ? getCard(u.cardId).upkeep ?? 0 : 0;
     if (upkeep > 0) {
@@ -319,6 +373,8 @@ function startTurn(s: GameState) {
   });
   if (pl.faction === 'decay') transmute(s, p);
   if (pl.faction === 'union') bombard(s, p);
+  holdLands(s, p);
+  if (s.winner !== null) return;
   captureTiles(s, p);
 }
 
@@ -385,7 +441,7 @@ export function applyAction(state: GameState, action: Action): GameState {
       if (!canPlaceBase(pl)) throw new Error('cannot place more bases this turn');
       pl.discard.push(...pl.hand.splice(idx, 1));
       pl.bases++;
-      pl.basesPlaced++;
+      pl.baseRights--;
       pl.cardsUsedThisTurn++;
       emit(s, { t: 'base', p, total: pl.bases });
       break;
@@ -485,9 +541,9 @@ export function applyAction(state: GameState, action: Action): GameState {
   return s;
 }
 
-// 베이스는 한 턴에 내 턴 번호만큼까지 깔 수 있다 (1턴 1장, 2턴 2장 …). 판 위 최대 BALANCE.base.max개
+// 베이스 설치 횟수는 내 턴마다 BALANCE.base.perTurn씩 생기고, 안 쓰면 다음 턴으로 쌓인다. 판 위 최대 BALANCE.base.max개
 export function canPlaceBase(pl: PlayerState): boolean {
-  return pl.basesPlaced < pl.turns && pl.bases < BALANCE.base.max;
+  return pl.baseRights > 0 && pl.bases < BALANCE.base.max;
 }
 
 // 공격할 수 있는 유닛은 턴 종료 때 반드시 공격한다 (직접 공격 버튼 없음)
@@ -514,11 +570,15 @@ function attackWith(s: GameState, p: 0 | 1, lane: number) {
     // 공격자가 먼저 친다. 대상이 쓰러지면 끝, 버텨내면 반격한다
     const foeP = (1 - p) as 0 | 1;
     emit(s, { t: 'attack', p, lane, at, target: 'unit', dmg: u.atk });
-    target.hp -= reducedDamage(target, u.atk, 'armor');
+    const dealt = reducedDamage(target, u.atk, 'armor');
+    target.hp -= dealt;
+    emit(s, { t: 'damage', p: foeP, lane: at, dmg: dealt, hp: target.hp });
     if (target.hp <= 0) destroyUnit(s, foeP, at, 'combat');
     else if (target.atk > 0) {
       emit(s, { t: 'counter', p: foeP, lane: at, at: lane, dmg: target.atk });
-      u.hp -= reducedDamage(u, target.atk, 'armor');
+      const back = reducedDamage(u, target.atk, 'armor');
+      u.hp -= back;
+      emit(s, { t: 'damage', p, lane, dmg: back, hp: u.hp });
       if (u.hp <= 0) destroyUnit(s, p, lane, 'combat');
     }
     // 전투에서 살아남은 쪽은 기력 +1
