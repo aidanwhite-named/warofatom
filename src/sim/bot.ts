@@ -1,7 +1,7 @@
 import { getCard } from '../data/cards';
 import { BALANCE } from '../engine/config';
 import { getElement } from '../data/elements';
-import { applyAction, costOf, isLocked, reactDamage } from '../engine/game';
+import { applyAction, costOf, isLocked, reactDamage, reducedDamage } from '../engine/game';
 import type { Action, GameState } from '../engine/types';
 
 // 단순 탐욕 봇: 진영 자원 규칙을 '대충 합리적으로' 쓰는 수준. 밸런스 경향 확인용.
@@ -82,12 +82,12 @@ export function chooseAction(s: GameState): Action {
     }
   }
 
-  // 4. 공격: 빈 레인이면 상대 엔트로피, 유닛이면 손해 안 보는 교환만
+  // 4. 공격: 빈 레인이면 상대 엔트로피, 유닛이면 먼저 쳐서 잡거나(반격 없음) 반격을 버틸 때만
   for (let lane = 0; lane < me.lanes.length; lane++) {
     const u = me.lanes[lane];
     if (!u || u.sick || u.attacked || u.atk <= 0) continue;
     const t = foe.lanes[lane];
-    if (!t || t.hp <= u.atk || u.hp > t.atk) return { type: 'attack', lane };
+    if (!t || t.hp <= reducedDamage(t, u.atk, 'armor') || u.hp > reducedDamage(u, t.atk, 'armor')) return { type: 'attack', lane };
   }
 
   // 5. 붕괴의 교단: 다음 턴 시작에 반감기로 사라질 유닛은 공격을 마친 뒤 보드 붕괴 (붕괴열로 3단계를 다시 돈다)

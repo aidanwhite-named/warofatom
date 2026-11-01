@@ -25,6 +25,36 @@ describe('entropy', () => {
   });
 });
 
+describe('hand', () => {
+  it('draws as many cards as were used last turn, up to the hand limit', () => {
+    let s = createGame(DECKS.union, DECKS.union, 1);
+    s.players[0].pool = 10;
+    const [a, b] = giveHand(s, 0, ['li_scout', 'na_runner', 'li_scout']);
+    s = applyAction(s, { type: 'play', uid: a, lane: 0 });
+    s = applyAction(s, { type: 'play', uid: b, lane: 1 });
+    s = endTurn(endTurn(s));
+    expect(s.players[0].hand.length).toBe(1 + 2);
+    s.players[0].hand = s.players[0].deck.splice(0, BALANCE.hand.max - 1);
+    s.players[0].cardsUsedThisTurn = 3;
+    s = endTurn(endTurn(s));
+    expect(s.players[0].hand.length).toBe(BALANCE.hand.max);
+  });
+
+  it('ending a turn without using a playable card raises own entropy', () => {
+    let s = createGame(DECKS.union, DECKS.union, 1);
+    s.players[0].pool = 1;
+    giveHand(s, 0, ['li_scout']);
+    const e = s.players[0].entropy;
+    s = endTurn(s);
+    expect(s.players[0].entropy).toBe(e + BALANCE.hand.idleEntropy);
+    s.players[1].pool = 0;
+    giveHand(s, 1, ['li_scout']);
+    const e1 = s.players[1].entropy;
+    s = endTurn(s);
+    expect(s.players[1].entropy).toBe(e1); // 낼 수 있는 카드가 없으면 페널티 없음
+  });
+});
+
 describe('setup', () => {
   it('deals starting hands and starts player 0 turn', () => {
     const s = createGame(DECKS.union, DECKS.covalent, 7);
@@ -89,6 +119,21 @@ describe('combat', () => {
     // 나트륨 2/1 vs 마그네슘 1/4 → 나트륨 사망, 마그네슘 hp 2
     expect(s.players[0].lanes[0]).toBeNull();
     expect(s.players[1].lanes[0]?.hp).toBe(2);
+  });
+
+  it('attacker strikes first: a killed defender does not counter, a survivor does', () => {
+    const s = createGame(DECKS.union, DECKS.union, 1);
+    s.players[0].lanes[0] = { uid: 900, cardId: 'na_runner', atk: 3, hp: 2, sick: false, attacked: false };
+    s.players[1].lanes[0] = { uid: 901, cardId: 'li_scout', atk: 5, hp: 3, sick: false, attacked: false };
+    s.players[0].lanes[1] = { uid: 902, cardId: 'na_runner', atk: 2, hp: 4, sick: false, attacked: false };
+    s.players[1].lanes[1] = { uid: 903, cardId: 'li_scout', atk: 3, hp: 3, sick: false, attacked: false };
+    let t = applyAction(s, { type: 'attack', lane: 0 });
+    expect(t.players[1].lanes[0]).toBeNull();
+    expect(t.players[0].lanes[0]?.hp).toBe(2); // 대상이 쓰러져 반격 없음
+    t = applyAction(t, { type: 'attack', lane: 1 });
+    expect(t.players[1].lanes[1]?.hp).toBe(1);
+    expect(t.players[0].lanes[1]?.hp).toBe(1); // 버틴 대상이 반격
+    expect(t.log.some((e) => e.t === 'counter')).toBe(true);
   });
 
   it('wins when opponent entropy fills up', () => {
@@ -376,7 +421,8 @@ describe('faction element use', () => {
     const e0 = s.players[1].entropy;
     s = endTurn(endTurn(s));
     expect(s.players[0].elements).toEqual(['Th', 'Fe']);
-    expect(s.players[1].entropy).toBe(e0 + BALANCE.naturalEntropy + BALANCE.elements.chainEntropy);
+    // 상대(연맹)는 카드를 쓰지 않고 턴을 넘겨 idle 페널티도 받는다
+    expect(s.players[1].entropy).toBe(e0 + BALANCE.naturalEntropy + BALANCE.hand.idleEntropy + BALANCE.elements.chainEntropy);
     const pool = s.players[0].pool;
     s = applyAction(s, { type: 'decay', from: 'element', element: 'Fe' });
     expect(s.players[0].pool).toBe(pool + BALANCE.elements.burnGain);
@@ -396,7 +442,7 @@ describe('covalent element capture', () => {
     const hand = s.players[0].hand.length;
     s = endTurn(s);
     expect(s.players[0].elements).toEqual([tile]);
-    expect(s.players[0].hand.length).toBe(hand + 1 + BALANCE.elements.bondDraw); // 턴 드로우 + 결합 드로우
+    expect(s.players[0].hand.length).toBe(hand + BALANCE.elements.bondDraw); // 지난 턴 사용 0장 → 턴 드로우 없음, 결합 드로우만
   });
 });
 

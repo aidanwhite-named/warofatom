@@ -38,6 +38,9 @@ export function createGame(a: DeckSpec, b: DeckSpec, seed = 1): GameState {
       latticePile: cov ? BALANCE.covalent.pileSize : 0,
       latticePlayed: false,
       unitsPlayedThisTurn: 0,
+      cardsUsedThisTurn: 0,
+      cardsUsedLastTurn: 1, // 첫 턴 드로우는 예전처럼 1장
+      cardsDecayedThisTurn: 0,
       turns: 0,
       elements: [],
       capture: Array(LANES).fill(0),
@@ -84,8 +87,10 @@ function emit(s: GameState, e: GameEvent) {
   s.log.push(e);
 }
 
+// 손패가 가득 차 있으면 드로우하지 않는다 (카드는 덱에 남는다)
 export function drawCard(s: GameState, p: 0 | 1) {
   const pl = s.players[p];
+  if (pl.hand.length >= BALANCE.hand.max) return;
   const c = pl.deck.shift();
   if (!c) {
     addEntropy(s, p, BALANCE.fatigueEntropy, 'fatigue');
@@ -231,12 +236,16 @@ function startTurn(s: GameState) {
   pl.turns++;
   pl.latticePlayed = false;
   pl.unitsPlayedThisTurn = 0;
+  pl.cardsUsedLastTurn = pl.cardsUsedThisTurn;
+  pl.cardsUsedThisTurn = 0;
+  pl.cardsDecayedThisTurn = 0;
   addEntropy(s, p, BALANCE.naturalEntropy, 'natural');
   if (s.winner !== null) return;
   resourceRules[pl.faction].onTurnStart(pl);
   if (p === 1 && pl.turns === 1) pl.pool += BALANCE[pl.faction].secondPool;
   emit(s, { t: 'turnStart', p, pool: pl.pool });
-  if (s.turn > 1) drawCard(s, p);
+  // 지난 턴 사용한 만큼 드로우 (손패 상한까지)
+  if (s.turn > 1) for (let i = 0; i < pl.cardsUsedLastTurn; i++) drawCard(s, p);
   pl.lanes.forEach((u, lane) => {
     if (!u) return;
     u.sick = false;
@@ -281,6 +290,7 @@ export function applyAction(state: GameState, action: Action): GameState {
       if (pl.pool < cost) throw new Error('not enough resource');
       pl.pool -= cost;
       pl.hand.splice(idx, 1);
+      pl.cardsUsedThisTurn++;
       const chained = def.faction === 'union' && pl.unitsPlayedThisTurn > 0;
       emit(s, { t: 'play', p, cardId: def.id, lane });
       if (action.overload) addEntropy(s, p, o.entropy, 'overload');
@@ -323,11 +333,16 @@ export function applyAction(state: GameState, action: Action): GameState {
       u.attacked = true;
       const target = foe.lanes[action.lane];
       if (target) {
+        // 공격자가 먼저 친다. 대상이 쓰러지면 끝, 버텨내면 반격한다
+        const foeP = (1 - p) as 0 | 1;
         emit(s, { t: 'attack', p, lane: action.lane, target: 'unit', dmg: u.atk });
         target.hp -= reducedDamage(target, u.atk, 'armor');
-        u.hp -= reducedDamage(u, target.atk, 'armor');
-        if (target.hp <= 0) destroyUnit(s, (1 - p) as 0 | 1, action.lane, 'combat');
-        if (u.hp <= 0) destroyUnit(s, p, action.lane, 'combat');
+        if (target.hp <= 0) destroyUnit(s, foeP, action.lane, 'combat');
+        else if (target.atk > 0) {
+          emit(s, { t: 'counter', p: foeP, lane: action.lane, dmg: target.atk });
+          u.hp -= reducedDamage(u, target.atk, 'armor');
+          if (u.hp <= 0) destroyUnit(s, p, action.lane, 'combat');
+        }
         // 전투에서 살아남은 쪽은 기력 +1
         gainEnergy(s, p, action.lane);
         gainEnergy(s, (1 - p) as 0 | 1, action.lane);
@@ -352,6 +367,7 @@ export function applyAction(state: GameState, action: Action): GameState {
         const idx = pl.hand.findIndex((c) => c.uid === action.uid);
         if (idx < 0) throw new Error('card not in hand');
         const [c] = pl.hand.splice(idx, 1);
+        if (pl.cardsDecayedThisTurn++ < BALANCE.hand.decayCounts) pl.cardsUsedThisTurn++;
         pl.discard.push(c);
         cardId = c.cardId;
         gain = decayGain.hand(getCard(cardId).level);
@@ -390,12 +406,20 @@ export function applyAction(state: GameState, action: Action): GameState {
       break;
     }
     case 'endTurn': {
+      // 쓸 수 있는 카드가 있었는데 한 장도 쓰지 않았으면 엔트로피 페널티
+      if (pl.cardsUsedThisTurn === 0 && canUseCard(s)) addEntropy(s, p, BALANCE.hand.idleEntropy, 'idle');
+      if (s.winner !== null) break;
       s.active = (1 - p) as 0 | 1;
       startTurn(s);
       break;
     }
   }
   return s;
+}
+
+// 지금 손패에서 낼(또는 붕괴할) 수 있는 카드가 있는지
+function canUseCard(s: GameState): boolean {
+  return legalActions(s).some((a) => a.type === 'play' || (a.type === 'decay' && a.from === 'hand'));
 }
 
 export function legalActions(s: GameState): Action[] {

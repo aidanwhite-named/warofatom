@@ -53,6 +53,9 @@ export type PlayerState = {
   latticePile: number; // 아직 놓지 않은 격자 수 (덱과 별도)
   latticePlayed: boolean;
   unitsPlayedThisTurn: number;
+  cardsUsedThisTurn: number; // 손패에서 사용한 장수 (다음 턴 시작에 이만큼 드로우)
+  cardsUsedLastTurn: number;
+  cardsDecayedThisTurn: number; // 손패 붕괴 장수 (BALANCE.hand.decayCounts까지만 사용으로 센다)
   turns: number; // 내 턴이 시작된 횟수
   elements: string[]; // 획득한 원소 기호
   capture: number[]; // 레인별 장악 게이지
@@ -81,7 +84,7 @@ export type Action =
   | { type: 'react'; lane: number; a: string; b: string } // 연맹: 가진 원소 2개로 반응
   | { type: 'endTurn' };
 
-export type EntropyCause = 'natural' | 'attack' | 'effect' | 'fatigue' | 'overload';
+export type EntropyCause = 'natural' | 'attack' | 'effect' | 'fatigue' | 'overload' | 'idle';
 
 export type GameEvent =
   | { t: 'turnStart'; p: 0 | 1; pool: number }
@@ -89,6 +92,7 @@ export type GameEvent =
   | { t: 'play'; p: 0 | 1; cardId: string; lane: number }
   | { t: 'lattice'; p: 0 | 1; total: number }
   | { t: 'attack'; p: 0 | 1; lane: number; target: 'unit' | 'entropy'; dmg: number }
+  | { t: 'counter'; p: 0 | 1; lane: number; dmg: number } // 공격을 버틴 유닛의 반격 (p = 반격한 쪽)
   | { t: 'death'; p: 0 | 1; cardId: string; lane: number; reason: 'combat' | 'halfLife' | 'decay' | 'effect' | 'upkeep' }
   | { t: 'decay'; p: 0 | 1; cardId: string; gain: number }
   | { t: 'inherit'; p: 0 | 1; cardId: string; lane: number }
