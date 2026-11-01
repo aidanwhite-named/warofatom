@@ -110,11 +110,19 @@ main { padding: 24px; max-width: 1280px; margin: 0 auto; }
   box-shadow: 0 .4em 1.2em #000a, inset 0 0 0 .1em #ffffff1a; color: #eef1f8; user-select: none; overflow: hidden; }
 .card.big { --cw: 230px; }
 .c-art { position: absolute; left: .6em; right: .6em; top: .6em; height: 44%; border-radius: .7em; display: grid; place-items: center; overflow: hidden; border: .1em solid #ffffff22;
-  background: radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--fc) 70%, #fff) 0%, color-mix(in srgb, var(--fc) 45%, #000) 34%, #07090d 78%); }
+  background: radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--gc, var(--fc)) 70%, #fff) 0%, color-mix(in srgb, var(--gc, var(--fc)) 45%, #000) 34%, #07090d 78%);
+  border-color: color-mix(in srgb, var(--gc, #fff) 60%, transparent); }
 .c-art::before, .c-art::after { content: ''; position: absolute; width: 130%; height: 34%; border: .1em solid #ffffff30; border-radius: 50%; transform: rotate(30deg); }
 .c-art::after { transform: rotate(-30deg); }
-.c-sym { position: relative; font-size: 3.4em; font-weight: 900; text-shadow: 0 0 .25em #000, 0 0 .5em color-mix(in srgb, var(--fc) 80%, #fff); z-index: 1; }
-.c-race { position: absolute; bottom: .25em; font-size: .75em; color: #fffc; z-index: 1; text-shadow: 0 1px 2px #000; }
+.c-sym { position: relative; font-size: 3.4em; font-weight: 900; text-shadow: 0 0 .25em #000, 0 0 .5em color-mix(in srgb, var(--gc, var(--fc)) 80%, #fff); z-index: 1; }
+.c-race { position: absolute; bottom: .25em; font-size: .75em; color: #111; background: var(--gc, #fffc); border-radius: .4em; padding: 0 .45em; font-weight: 700; z-index: 1; }
+.c-guard { position: absolute; bottom: .55em; left: 50%; transform: translateX(-50%); display: flex; gap: .3em; z-index: 2; }
+.c-guard i { font-style: normal; font-weight: 900; font-size: .95em; background: #000d; border: .08em solid #9ec5ff88; color: #cfe2ff; border-radius: .4em; padding: 0 .35em; }
+.c-guard + .c-kind, .card:has(.c-guard) .c-kind { display: none; }
+/* 공명: 가진 원소와 맞는 카드 (비용 할인 또는 소환 시 +N/+N) */
+.c-res { position: absolute; top: 40%; left: 50%; transform: translateX(-50%); z-index: 2; display: flex; gap: .25em; white-space: nowrap; }
+.c-res span { font-size: .8em; font-weight: 900; color: #111; background: var(--gc); border-radius: .4em; padding: .05em .4em; box-shadow: 0 0 .5em var(--gc); }
+.c-res span.soft { background: #000c; color: var(--gc); border: .08em solid var(--gc); box-shadow: none; }
 .c-cost { position: absolute; left: -.05em; top: -.05em; width: 2.1em; height: 2.1em; font-size: 1.35em; border-radius: 50%; display: grid; place-items: center; font-weight: 900; z-index: 2;
   background: radial-gradient(circle at 35% 30%, #a6dcff, #1f5fc4 65%, #0d2c66); border: .12em solid #d6edff; text-shadow: 0 1px 2px #000; box-shadow: 0 .1em .4em #000a; }
 .c-cost.down { background: radial-gradient(circle at 35% 30%, #b7ffcc, #1f9d55 65%, #0b4a26); border-color: #c8ffd9; }
@@ -168,6 +176,7 @@ main { padding: 24px; max-width: 1280px; margin: 0 auto; }
 .chip.n-metal { background: linear-gradient(#7d8aa6, #49526a); }
 .chip.n-nonmetal { background: linear-gradient(#37b38a, #1d6e54); }
 .chip.n-noble { background: linear-gradient(#b383ff, #6c45b0); }
+.chip[style*="--gc"] { background: linear-gradient(color-mix(in srgb, var(--gc) 80%, #fff), color-mix(in srgb, var(--gc) 60%, #000)); color: #111; text-shadow: none; }
 .chip.on { border-color: var(--gold); box-shadow: 0 0 10px var(--gold); transform: translateY(-2px); }
 .btn.lattice { width: 100%; background: linear-gradient(#2f6fc7, #1d4a8c); border-color: #6cb2ff; }
 .btn.lattice:not(:disabled) { animation: glowBlue 1.6s infinite; }
@@ -194,12 +203,16 @@ main { padding: 24px; max-width: 1280px; margin: 0 auto; }
 .tile.n-metal { background: linear-gradient(160deg, #3a4560, #1c2233); }
 .tile.n-nonmetal { background: linear-gradient(160deg, #1f5a48, #10291f); }
 .tile.n-noble { background: linear-gradient(160deg, #4e3480, #221638); }
+.tile[style*="--gc"] { background: linear-gradient(160deg, color-mix(in srgb, var(--gc) 45%, #1b1f2a), #10131a 85%); border-color: color-mix(in srgb, var(--gc) 55%, transparent); }
+.tile.match { box-shadow: 0 0 0 3px var(--gc), 0 0 22px var(--gc); animation: tileMatch 1s infinite; }
+@keyframes tileMatch { 50% { box-shadow: 0 0 0 3px var(--gc), 0 0 34px var(--gc); } }
+.t-nature { position: absolute; left: 7px; bottom: 3px; font-size: 9px; color: #fff8; }
 .tile.ley { border-color: #7dffcf; box-shadow: 0 0 16px #7dffcf66, inset 0 0 18px #7dffcf33; }
 .tile.empty { background: #0006; border-style: dashed; }
-.t-sym { font-size: 30px; font-weight: 900; line-height: 1; text-shadow: 0 0 10px #fff6; }
+.t-sym { font-size: 30px; font-weight: 900; line-height: 1; color: color-mix(in srgb, var(--gc, #fff) 55%, #fff); text-shadow: 0 0 10px #000, 0 0 14px var(--gc, #fff6); }
 .t-period { position: absolute; left: 7px; top: 4px; font-size: 11px; color: #fffa; }
 .t-name { position: absolute; right: 7px; top: 4px; font-size: 11px; color: #fffa; }
-.t-group { position: absolute; bottom: 12px; font-size: 10px; color: #fff9; }
+.t-group { position: absolute; bottom: 12px; font-size: 10px; color: var(--gc, #fff9); font-weight: 700; }
 .pips { position: absolute; left: 0; right: 0; display: flex; justify-content: center; gap: 4px; }
 .pips.foe { top: -1px; } .pips.me { bottom: 2px; }
 .pips i { width: 16px; height: 5px; border-radius: 3px; background: #ffffff22; }
@@ -246,6 +259,8 @@ main { padding: 24px; max-width: 1280px; margin: 0 auto; }
 .end-turn:active:not(:disabled) { transform: scale(.97); }
 .end-turn:disabled { background: linear-gradient(#4a5168, #2d3244); color: #9aa2b8; border-color: #5d667f; cursor: default; }
 .end-turn.glow { background: linear-gradient(#a6ffb9, #2fbf6a); border-color: #dcffe6; animation: endGlow 1.1s infinite; }
+.end-turn.idle { background: linear-gradient(#ffb38a, #e0632d); border-color: #ffd9c4; }
+.end-turn small { display: block; font-size: 12px; font-weight: 700; }
 @keyframes endGlow { 50% { box-shadow: 0 0 30px #52d68a, 0 6px 18px #000a; } }
 
 .hint { position: absolute; left: 276px; top: 538px; width: 712px; height: 40px; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 14px; z-index: 7; }
@@ -255,11 +270,17 @@ main { padding: 24px; max-width: 1280px; margin: 0 auto; }
 @keyframes blink { 50% { opacity: .2; } }
 
 .hand { position: absolute; left: 276px; top: 574px; width: 712px; height: 176px; z-index: 8; }
-.hcard { --cw: 116px; position: absolute; transform: rotate(var(--r)); transform-origin: 50% 120%; transition: transform .16s ease-out, box-shadow .16s; cursor: pointer; }
+/* 바깥 .hslot은 크기·위치가 고정된 마우스 영역이고 움직이는 건 안쪽 카드뿐이다.
+   카드 자체에 hover를 걸면 커진 카드가 마우스 밖으로 올라가 hover가 풀렸다 걸렸다 하며 깜빡인다 */
+.hslot { position: absolute; width: 116px; height: 162px; cursor: pointer; }
+.hslot:hover { z-index: 50 !important; }
+.hslot.selected { z-index: 40 !important; }
+.hcard { --cw: 116px; position: absolute; left: 0; top: 0; transform: rotate(var(--r)); transform-origin: 50% 120%; transition: transform .16s ease-out, box-shadow .16s; pointer-events: none; }
 .hcard.playable { box-shadow: 0 0 0 3px #52d68a, 0 0 16px #52d68a, 0 6px 14px #000a; }
-.hcard:hover { transform: translateY(-112px) scale(1.5); z-index: 50 !important; }
-.hcard.selected { transform: translateY(-34px) rotate(0deg); box-shadow: 0 0 0 3px var(--gold), 0 0 24px var(--gold); z-index: 40 !important; }
-.hcard.selected:hover { transform: translateY(-112px) scale(1.5); }
+.hcard.res:not(.playable) { box-shadow: 0 0 0 2px var(--gc), 0 0 14px var(--gc), 0 6px 14px #000a; }
+.hslot:hover .hcard { transform: translateY(-112px) scale(1.5); }
+.hslot.selected .hcard { transform: translateY(-34px) rotate(0deg); box-shadow: 0 0 0 3px var(--gold), 0 0 24px var(--gold); }
+.hslot.selected:hover .hcard { transform: translateY(-112px) scale(1.5); }
 
 .preview { position: absolute; z-index: 60; pointer-events: none; opacity: 0; transition: opacity .12s; display: flex; flex-direction: column; gap: 8px; }
 .preview.show { opacity: 1; }

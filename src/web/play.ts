@@ -2,12 +2,12 @@ import { getCard } from '../data/cards';
 import { getElement } from '../data/elements';
 import { FACTIONS } from '../data/factions';
 import { BALANCE } from '../engine/config';
-import { applyAction, costOf, createGame, isLocked, legalActions, levelCap, type DeckSpec } from '../engine/game';
+import { applyAction, costOf, createGame, isLocked, legalActions, levelCap, reducedDamage, type DeckSpec } from '../engine/game';
 import { decayGain } from '../engine/resources';
 import type { Action, CardDef, EntropyCause, Faction, GameEvent, GameState, PlayerState, Unit } from '../engine/types';
 import { LANES } from '../engine/types';
 import { chooseAction } from '../sim/bot';
-import { cardBackHTML, cardHTML, esc } from './cards';
+import { cardBackHTML, cardHTML, esc, groupColor } from './cards';
 import { anim, Fx, sleep } from './fx';
 
 // 대전 화면. 엔진(applyAction)이 남긴 이벤트 로그를 순서대로 연출한 뒤 새 상태를 그린다.
@@ -23,7 +23,7 @@ const STAGE_W = 1280, STAGE_H = 760;
 const COLOR: Record<Faction, string> = { union: '#ff9d4d', covalent: '#5aa8ff', decay: '#b483ff' };
 const ICON: Record<Faction, string> = { union: '⚡', covalent: '⬡', decay: '☢' };
 const REASON = { combat: '전투', halfLife: '반감기', decay: '붕괴', effect: '효과', upkeep: '유지비' };
-const CAUSE: Record<EntropyCause, string> = { natural: '자연 증가', attack: '공격', effect: '효과', fatigue: '덱 고갈', overload: '과부하' };
+const CAUSE: Record<EntropyCause, string> = { natural: '자연 증가', attack: '공격', effect: '효과', fatigue: '덱 고갈', overload: '과부하', idle: '방치' };
 const NATURE = { metal: '금속', nonmetal: '비금속', noble: '비활성' };
 
 export function startMatch(root: HTMLElement, o: MatchOpts): () => void {
@@ -240,8 +240,26 @@ class Match {
         const att = this.q(`[data-slot="${side}-${e.lane}"] .unit`);
         const tgt = this.q(`[data-slot="${this.other(side)}-${e.lane}"]`);
         if (att && tgt) await this.fx.lunge(att, tgt, e.target === 'unit' ? '#ffd166' : '#ff5d8f');
+        const defender = this.s.players[1 - e.p].lanes[e.lane];
+        if (e.target === 'unit' && defender && tgt) {
+          const blocked = e.dmg - reducedDamage(defender, e.dmg, 'armor');
+          if (blocked > 0) { const c = this.fx.center(tgt); this.fx.float(`🛡 -${blocked}`, c.x, c.y - 50, 'buff'); }
+        }
         const meter = this.q(`[data-meter="${this.other(side)}"]`);
         if (e.target === 'entropy' && tgt && meter) await this.fx.orb(tgt, meter, '#ff5d8f');
+        break;
+      }
+      case 'counter': {
+        // 공격을 버텨낸 유닛이 되받아친다
+        const def = this.q(`[data-slot="${side}-${e.lane}"] .unit`);
+        const tgt = this.q(`[data-slot="${this.other(side)}-${e.lane}"]`);
+        if (!def || !tgt) break;
+        const c = this.fx.center(def);
+        this.fx.float('반격!', c.x, c.y - 60, 'buff');
+        await this.fx.lunge(def, tgt, '#9ec5ff');
+        const attacker = this.s.players[1 - e.p].lanes[e.lane];
+        const blocked = attacker ? e.dmg - reducedDamage(attacker, e.dmg, 'armor') : 0;
+        if (blocked > 0) { const t = this.fx.center(tgt); this.fx.float(`🛡 -${blocked}`, t.x, t.y - 50, 'buff'); }
         break;
       }
       case 'death': {
@@ -617,6 +635,7 @@ class Match {
       case 'play': return `${who}: ${n(e.cardId)} → ${e.lane + 1}번 레인`;
       case 'lattice': return `${who}: 격자 배치 (총 ${e.total})`;
       case 'attack': return `${who}: ${e.lane + 1}번 레인 공격 → ${e.target === 'unit' ? '유닛' : '엔트로피'} (${e.dmg})`;
+      case 'counter': return `${who}: 버텨내고 반격 (${e.dmg})`;
       case 'death': return `${who}의 ${n(e.cardId)} 파괴 (${REASON[e.reason]})`;
       case 'decay': return `${who}: ${n(e.cardId)} 붕괴 → 붕괴열 +${e.gain}`;
       case 'inherit': return `${who}: ${n(e.cardId)}의 능력 계승 (${e.lane + 1}번 레인)`;
@@ -642,6 +661,7 @@ class Match {
       ${this.slot('foe', foe, i, marks)}${this.tile(i)}${this.slot('me', me, i, marks)}</div>`).join('');
     const ley = s.leyline;
     const onlyEnd = mine && this.legal.length === 1;
+    const idle = mine && me.cardsUsedThisTurn === 0 && this.legal.some((a) => a.type === 'play' || (a.type === 'decay' && a.from === 'hand'));
     this.view.innerHTML = `
       <div class="tb-left"><button class="btn ghost" data-act="menu">☰ 나가기</button><button class="btn ghost" data-act="surrender" ${this.ended ? 'disabled' : ''}>🏳 항복</button></div>
       <div class="tb-right">${this.o.admin ? `<button class="btn ghost ${this.reveal ? 'on' : ''}" data-act="reveal" title="관리자 권한">👁 상대 손패</button>` : ''}<button class="btn ghost" data-act="log">📜 기록</button></div>
@@ -652,7 +672,7 @@ class Match {
       <div class="board ${s.active === this.h ? 'my-turn' : 'foe-turn'}">${lanes}</div>
       ${this.pile('foe', foe)}${this.pile('me', me)}
       <div class="turn-pill ${s.active === this.h ? 'me' : 'foe'}">턴 ${this.turnNo}<b>${s.active === this.h ? '내 턴' : '상대 턴'}</b></div>
-      <button class="end-turn ${onlyEnd ? 'glow' : ''}" data-act="end" ${mine ? '' : 'disabled'}>${mine ? '턴 종료' : s.active === this.h ? '…' : '상대 턴'}</button>
+      <button class="end-turn ${idle ? 'idle' : onlyEnd ? 'glow' : ''}" data-act="end" ${mine ? '' : 'disabled'} title="${idle ? '낼 수 있는 카드를 한 장도 쓰지 않으면 엔트로피가 오릅니다' : ''}">${mine ? '턴 종료' : s.active === this.h ? '…' : '상대 턴'}${idle ? `<small>방치: 엔트로피 +${BALANCE.hand.idleEntropy}</small>` : ''}</button>
       <div class="hint">${this.hint()}</div>
       <div class="me-hand hand">${this.handHTML(me)}</div>
       <div class="preview"></div>
@@ -684,7 +704,7 @@ class Match {
     const clickable = side === 'me' && pl.faction !== 'covalent';
     const chips = pl.elements.map((e, i) => {
       const d = getElement(e);
-      return `<button class="chip n-${d.nature} ${picked.includes(i) ? 'on' : ''}" data-el="${i}" ${clickable ? '' : 'disabled'} title="${d.name} · ${d.group} · ${d.period}주기 · ${NATURE[d.nature]}${d.decaysTo ? ` · 붕괴 → ${d.decaysTo}` : ''}">${e}</button>`;
+      return `<button class="chip n-${d.nature} ${picked.includes(i) ? 'on' : ''}" style="--gc:${groupColor(d.group)}" data-el="${i}" ${clickable ? '' : 'disabled'} title="${d.name} · ${d.group} · ${d.period}주기 · ${NATURE[d.nature]}${d.decaysTo ? ` · 붕괴 → ${d.decaysTo}` : ''}">${e}</button>`;
     }).join('');
     const canLattice = this.legal.some((a) => a.type === 'lattice');
     const active = this.s.active === (side === 'me' ? this.h : 1 - this.h);
@@ -746,10 +766,11 @@ class Match {
       const need = BALANCE.elements.captureTurns[pl.faction];
       return Array.from({ length: need }, (_, i) => `<i class="${i < pl.capture[lane] ? 'on' : ''}"></i>`).join('');
     };
-    return `<div class="tile n-${e.nature} ${e.group === s.leyline ? 'ley' : ''}" data-tile="${lane}" data-lane="${lane}" data-side="tile"
+    const match = this.selectedTiles().includes(lane);
+    return `<div class="tile n-${e.nature} ${e.group === s.leyline ? 'ley' : ''} ${match ? 'match' : ''}" style="--gc:${groupColor(e.group)}" data-tile="${lane}" data-lane="${lane}" data-side="tile"
         title="${e.name} (${sym}) · ${e.group} · ${e.period}주기 · ${NATURE[e.nature]}${e.group === s.leyline ? ' · 지맥' : ''}&#10;레인을 혼자 지킨 채 턴을 ${BALANCE.elements.captureTurns[this.me().faction]}번 시작하면 획득">
       <div class="pips foe">${pips(this.foe())}</div>
-      <span class="t-period">${e.period}</span><span class="t-sym">${sym}</span><span class="t-name">${e.name}</span><span class="t-group">${e.group}</span>
+      <span class="t-period">${e.period}</span><span class="t-sym">${sym}</span><span class="t-name">${e.name}</span><span class="t-group">${e.group}${e.group === s.leyline ? ' ★' : ''}</span><span class="t-nature">${NATURE[e.nature]}</span>
       <div class="pips me">${pips(this.me())}</div></div>`;
   }
 
@@ -758,7 +779,7 @@ class Match {
     return `<div class="pile ${side} ${n <= 3 ? 'low' : ''}" data-pile="${side}">
       <div class="stack" style="--n:${Math.min(n, 6)}">${n ? cardBackHTML() : '<div class="empty-pile">덱 없음<small>드로우마다 엔트로피 +${BALANCE.fatigueEntropy}</small></div>'}</div>
       <div class="p-cnt"><b>${n}</b><span>덱</span></div>
-      <div class="p-sub">손패 ${pl.hand.length} · 버림 ${pl.discard.length}</div></div>`;
+      <div class="p-sub">손패 ${pl.hand.length}/${BALANCE.hand.max} · 버림 ${pl.discard.length}${side === 'me' ? `<br>이번 턴 사용 ${pl.cardsUsedThisTurn}장 → 다음 턴 ${Math.min(pl.cardsUsedThisTurn, BALANCE.hand.max - pl.hand.length)}장 드로우` : ''}</div></div>`;
   }
 
   private foeHand(foe: PlayerState) {
@@ -782,10 +803,38 @@ class Match {
       const x = W / 2 - CW / 2 + off * gap, y = 8 + off * off * 2.2;
       const locked = isLocked(me, def);
       const playable = this.legal.some((a) => a.type === 'play' && a.uid === c.uid);
-      const cls = ['hcard', playable ? 'playable' : '', locked ? 'locked' : '', sel?.k === 'hand' && sel.uid === c.uid ? 'selected' : ''].join(' ');
+      const syn = this.synergy(me, def);
+      const resonant = syn.discount > 0 || syn.buff > 0;
+      const cls = ['hcard', playable ? 'playable' : '', locked ? 'locked' : '', resonant ? 'res' : ''].join(' ');
       const lock = locked ? `<div class="c-lock">🔒<b>Lv ${def.level}</b><small>연구 단계 부족 (지금 Lv ${levelCap(me)}까지)</small></div>` : '';
-      return cardHTML(def, { cost: costOf(this.s, me, def), cls, extra: lock, attrs: `data-hand="${c.uid}" data-uid="${c.uid}" style="left:${x}px;top:${y}px;--r:${off * 3}deg;z-index:${i + 1}"` });
+      const badges = [
+        syn.discount > 0 ? `<span title="같은 원소를 가져 비용 -${syn.discount}">공명 −${syn.discount}</span>` : '',
+        syn.buff > 0 ? `<span title="같은 계열 원소를 가져 소환 시 +${syn.buff}/+${syn.buff}">+${syn.buff}/+${syn.buff}</span>` : '',
+        ...(resonant ? [] : syn.tiles.map((l) => `<span class="soft" title="${l + 1}번 레인의 ${this.s.tiles[l]}을(를) 장악하면 공명">⬡${this.s.tiles[l]}</span>`)),
+      ].join('');
+      const res = badges ? `<div class="c-res">${badges}</div>` : '';
+      const isSel = sel?.k === 'hand' && sel.uid === c.uid;
+      return `<div class="hslot ${isSel ? 'selected' : ''}" data-hand="${c.uid}" data-uid="${c.uid}" style="left:${x}px;top:${y}px;--r:${off * 3}deg;--gc:${groupColor(def.race)};z-index:${i + 1}">${cardHTML(def, { cost: syn.cost, cls, extra: lock + res })}</div>`;
     }).join('');
+  }
+
+  // 공명: discount = 같은 원소를 가져 비용 할인, buff = 같은 계열 원소를 가져 소환 시 +N/+N,
+  //   tiles = 장악하면 이 카드에 공명이 생기는 레인
+  private synergy(pl: PlayerState, def: CardDef) {
+    const cost = costOf(this.s, pl, def);
+    const ownGroup = pl.elements.some((e) => getElement(e).group === def.race);
+    const mult = def.race === this.s.leyline ? BALANCE.elements.leyline.resonanceMult : 1;
+    const buff = (def.kind ?? 'unit') === 'unit' && ownGroup ? BALANCE.elements.groupBuff * mult : 0;
+    const tiles = this.s.tiles.flatMap((t, i) => (t && (t === def.element || getElement(t).group === def.race) ? [i] : []));
+    return { cost, discount: def.level - cost, buff, tiles };
+  }
+
+  // 선택한 손패 카드와 공명하는 원소 타일 레인
+  private selectedTiles(): number[] {
+    const sel = this.sel;
+    if (sel?.k !== 'hand') return [];
+    const c = this.me().hand.find((x) => x.uid === sel.uid);
+    return c ? this.synergy(this.me(), getCard(c.cardId)).tiles : [];
   }
 
   private hint(): string {

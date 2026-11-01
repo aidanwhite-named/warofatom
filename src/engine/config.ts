@@ -24,7 +24,7 @@ export const BALANCE = {
   elements: {
     enabled: true, captureTurns: { union: 2, covalent: 2, decay: 2 }, contest: { union: false, covalent: true, decay: false },
     costDiscount: 1, groupBuff: 1,
-    react: { damage: 3, ionBonus: 1, entropy: 1, cost: 3 }, bondPool: 1, bondDraw: 1, burnGain: 2, chainEntropy: 1,
+    react: { damage: 3, ionBonus: 1, entropy: 1, cost: 2 }, bondPool: 1, bondDraw: 1, burnGain: 2, chainEntropy: 1,
     leyline: { enabled: true, resonanceMult: 2 },
     tech: { enabled: true, baseLevel: { union: 5, covalent: 5, decay: 9 }, periodOffset: 2 }, // 교단은 붕괴로 무거운 원소를 직접 만들어 제한 없음
   },
