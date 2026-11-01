@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "card-editor", "runtimeExecutable": "npm", "runtimeArgs": ["run", "card:ui", "--", "--port", "5173", "--strictPort"], "port": 5173 }
+  ]
+}

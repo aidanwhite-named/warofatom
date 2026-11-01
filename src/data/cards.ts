@@ -1,10 +1,10 @@
-import type { CardDef, EffectDef, Faction } from '../engine/types';
+import type { CardDef, CardKind, EffectDef, Faction } from '../engine/types';
 
 // 프로토타입용 임시 카드. 이름·수치 모두 가칭.
 const u = (
   id: string, name: string, faction: Faction, race: string, element: string,
   level: number, atk: number, hp: number,
-  extra: { keywords?: string[]; effects?: EffectDef[]; text?: string } = {},
+  extra: { kind?: CardKind; upkeep?: number; keywords?: string[]; effects?: EffectDef[]; text?: string } = {},
 ): CardDef => ({ id, name, faction, race, element, level, atk, hp, ...extra });
 
 export const CARDS: CardDef[] = [
@@ -28,6 +28,39 @@ export const CARDS: CardDef[] = [
   u('cs_detonator', '세슘 기폭자', 'union', '알칼리', 'Cs', 6, 6, 5,
     { effects: [{ trigger: 'onPlay', op: 'entropy', args: { n: 2 } }], text: '소환: 상대 엔트로피 +2' }),
   u('ba_titan', '바륨 거인', 'union', '알칼리토', 'Ba', 7, 7, 7),
+  // 반응식 마법 (연맹 전용): 고른 레인에 효과만 발동. 과부하로 엔트로피를 내고 할인 가능
+  u('rx_combust', '연소 반응', 'union', '칼코겐', 'O', 2, 0, 0,
+    { kind: 'spell', effects: [{ trigger: 'onPlay', op: 'strikeOpposite', args: { n: 2 } }], text: '마법: 대상 레인의 적 2 피해' }),
+  u('rx_neutral', '중화 반응', 'union', '할로겐', 'Cl', 3, 0, 0,
+    { kind: 'spell', effects: [{ trigger: 'onPlay', op: 'entropy', args: { n: 2 } }, { trigger: 'onPlay', op: 'draw', args: { n: 1 }, chain: true }], text: '마법: 상대 엔트로피 +2. 연쇄: 1장 드로우' }),
+  u('rx_thermite', '테르밋 반응', 'union', '알칼리토', 'Mg', 4, 0, 0,
+    { kind: 'spell', effects: [{ trigger: 'onPlay', op: 'strikeOpposite', args: { n: 5 } }, { trigger: 'onPlay', op: 'entropy', args: { n: 2 }, chain: true }], text: '마법: 대상 레인의 적 5 피해. 연쇄: 상대 엔트로피 +2' }),
+  // 기본 카드 풀 (덱 구성용 추가 카드)
+  u('rb_raider', '루비듐 습격자', 'union', '알칼리', 'Rb', 2, 3, 2),
+  u('fr_flash', '프랑슘 섬광병', 'union', '알칼리', 'Fr', 2, 4, 1, { keywords: ['halfLife:2'], text: '반감기 2' }),
+  u('be_shield', '베릴륨 방패병', 'union', '알칼리토', 'Be', 2, 1, 2, { keywords: ['armor:1'], text: '방어력 1' }),
+  u('sr_flare', '스트론튬 조명탄', 'union', '알칼리토', 'Sr', 3, 2, 3,
+    { effects: [{ trigger: 'onPlay', op: 'entropy', args: { n: 2 }, chain: true }], text: '연쇄: 상대 엔트로피 +2' }),
+  u('ra_glow', '라듐 발광체', 'union', '알칼리토', 'Ra', 5, 4, 4,
+    { effects: [{ trigger: 'onPlay', op: 'entropy', args: { n: 2 } }], text: '소환: 상대 엔트로피 +2' }),
+  u('i_sage', '아이오딘 현자', 'union', '할로겐', 'I', 3, 2, 3,
+    { effects: [{ trigger: 'onPlay', op: 'draw', args: { n: 1 }, chain: true }], text: '연쇄: 1장 드로우' }),
+  u('at_sniper', '아스타틴 저격수', 'union', '할로겐', 'At', 4, 3, 3,
+    { effects: [{ trigger: 'onPlay', op: 'strikeOpposite', args: { n: 2 } }], text: '소환: 맞은편 적 2 피해' }),
+  u('se_capacitor', '셀레늄 축전병', 'union', '칼코겐', 'Se', 3, 2, 2,
+    { keywords: ['charge:2'], effects: [{ trigger: 'onCharge', op: 'entropy', args: { n: 1 } }], text: '기력 2. 충전 시: 상대 엔트로피 +1' }),
+  u('te_bomber', '텔루륨 폭격수', 'union', '칼코겐', 'Te', 4, 3, 2,
+    { effects: [{ trigger: 'onDeath', op: 'entropy', args: { n: 3 } }], text: '파괴 시: 상대 엔트로피 +3' }),
+  u('po_toxin', '폴로늄 독병', 'union', '칼코겐', 'Po', 5, 5, 3,
+    { keywords: ['halfLife:3'], effects: [{ trigger: 'onPlay', op: 'entropy', args: { n: 2 } }], text: '반감기 3. 소환: 상대 엔트로피 +2' }),
+  u('rx_electro', '전기분해', 'union', '할로겐', 'Cl', 1, 0, 0,
+    { kind: 'spell', effects: [{ trigger: 'onPlay', op: 'draw', args: { n: 1 } }], text: '마법: 1장 드로우' }),
+  u('rx_oxidize', '산화 반응', 'union', '칼코겐', 'O', 2, 0, 0,
+    { kind: 'spell', effects: [{ trigger: 'onPlay', op: 'entropy', args: { n: 2 } }, { trigger: 'onPlay', op: 'draw', args: { n: 1 }, chain: true }], text: '마법: 상대 엔트로피 +2. 연쇄: 1장 드로우' }),
+  u('rx_explode', '폭발 반응', 'union', '알칼리', 'K', 3, 0, 0,
+    { kind: 'spell', effects: [{ trigger: 'onPlay', op: 'strikeOpposite', args: { n: 5 } }, { trigger: 'onPlay', op: 'entropy', args: { n: 1 }, chain: true }], text: '마법: 대상 레인의 적 5 피해. 연쇄: 상대 엔트로피 +1' }),
+  u('rx_flash', '섬광 반응', 'union', '알칼리토', 'Mg', 5, 0, 0,
+    { kind: 'spell', effects: [{ trigger: 'onPlay', op: 'strikeOpposite', args: { n: 4 } }, { trigger: 'onPlay', op: 'entropy', args: { n: 3 } }, { trigger: 'onPlay', op: 'draw', args: { n: 1 }, chain: true }], text: '마법: 대상 레인의 적 4 피해, 상대 엔트로피 +3. 연쇄: 1장 드로우' }),
 
   // ── 결속의 방벽: 격자(별도 더미) 쌓고 후반 폭발 ──
   u('si_wall', '규소 방벽', 'covalent', '준금속', 'Si', 1, 0, 5),
@@ -46,6 +79,32 @@ export const CARDS: CardDef[] = [
   u('w_juggernaut', '텅스텐 파괴자', 'covalent', '전이금속', 'W', 7, 7, 9),
   u('graphene', '그래핀 거신', 'covalent', '탄소족', 'C', 8, 8, 10,
     { effects: [{ trigger: 'onPlay', op: 'entropy', args: { n: 3 } }], text: '소환: 상대 엔트로피 +3' }),
+  // 장착 아이템 (방벽 전용): atk/hp는 장착 대상에 더하는 값
+  u('cnt_armor', '탄소나노튜브 장갑', 'covalent', '탄소족', 'C', 2, 0, 4, { kind: 'item', text: '장착: +0/+4' }),
+  u('bn_blade', '질화붕소 칼날', 'covalent', '질소족', 'N', 2, 3, 1, { kind: 'item', text: '장착: +3/+1' }),
+  u('wc_plating', '텅스텐카바이드 도금', 'covalent', '전이금속', 'W', 4, 3, 5, { kind: 'item', text: '장착: +3/+5' }),
+  // 기본 카드 풀 (덱 구성용 추가 카드): 방어력·기력·회복
+  u('sn_soldier', '주석 병사', 'covalent', '탄소족', 'Sn', 2, 1, 2, { keywords: ['armor:1'], text: '방어력 1' }),
+  u('co_magnet', '코발트 자석병', 'covalent', '전이금속', 'Co', 2, 1, 2,
+    { keywords: ['charge:3'], effects: [{ trigger: 'onCharge', op: 'entropy', args: { n: 1 } }], text: '기력 3. 충전 시: 상대 엔트로피 +1' }),
+  u('ni_golem', '니켈 골렘', 'covalent', '전이금속', 'Ni', 3, 2, 3, { keywords: ['armor:1'], text: '방어력 1' }),
+  u('sb_alchemist', '안티모니 연금술사', 'covalent', '준금속', 'Sb', 3, 2, 2,
+    { keywords: ['charge:3'], effects: [{ trigger: 'onCharge', op: 'draw', args: { n: 1 } }], text: '기력 3. 충전 시: 1장 드로우' }),
+  u('bi_crystal', '비스무트 결정', 'covalent', '질소족', 'Bi', 3, 1, 3,
+    { keywords: ['charge:2'], effects: [{ trigger: 'onCharge', op: 'healSelf', args: { n: 2 } }], text: '기력 2. 충전 시: 체력 2 회복' }),
+  u('pb_bulwark', '납 차폐벽', 'covalent', '탄소족', 'Pb', 4, 1, 5, { keywords: ['armor:1', 'resist:1'], text: '방어력 1. 저항 1' }),
+  u('v_dynamo', '바나듐 발전기', 'covalent', '전이금속', 'V', 4, 2, 4,
+    { keywords: ['charge:2'], effects: [{ trigger: 'onCharge', op: 'gainPool', args: { n: 1 } }], text: '기력 2. 충전 시: 자원 +1' }),
+  u('cr_lancer', '크로뮴 창기병', 'covalent', '전이금속', 'Cr', 5, 5, 4, { keywords: ['armor:1'], text: '방어력 1' }),
+  u('au_paladin', '금 성기사', 'covalent', '전이금속', 'Au', 6, 3, 5,
+    { keywords: ['armor:1', 'charge:2'], effects: [{ trigger: 'onCharge', op: 'healSelf', args: { n: 2 } }], text: '방어력 1. 기력 2. 충전 시: 체력 2 회복' }),
+  u('pt_catalyst', '백금 촉매핵', 'covalent', '전이금속', 'Pt', 7, 4, 6,
+    { keywords: ['charge:2'], effects: [{ trigger: 'onCharge', op: 'entropy', args: { n: 2 } }], text: '기력 2. 충전 시: 상대 엔트로피 +2' }),
+  u('c60_sphere', '풀러렌 구체', 'covalent', '탄소족', 'C', 9, 7, 9, { keywords: ['armor:1', 'resist:1'], text: '방어력 1. 저항 1' }),
+  u('pb_apron', '납 차폐복', 'covalent', '탄소족', 'Pb', 2, 0, 3, { kind: 'item', keywords: ['resist:2'], text: '장착: +0/+3, 저항 2' }),
+  u('gan_scope', '질화갈륨 조준경', 'covalent', '질소족', 'N', 2, 2, 0,
+    { kind: 'item', effects: [{ trigger: 'onPlay', op: 'draw', args: { n: 1 } }], text: '장착: +2/+0. 1장 드로우' }),
+  u('ti_shell', '티타늄 외피', 'covalent', '전이금속', 'Ti', 3, 0, 3, { kind: 'item', keywords: ['armor:2'], text: '장착: +0/+3, 방어력 2' }),
 
   // ── 붕괴의 교단: 붕괴로 기습 소환, 반감기 ──
   u('ne_wisp', '네온 도깨비불', 'decay', '비활성기체', 'Ne', 1, 1, 2),
@@ -64,6 +123,37 @@ export const CARDS: CardDef[] = [
   u('pu_reaper', '플루토늄 사신', 'decay', '악티늄족', 'Pu', 7, 8, 7,
     { keywords: ['halfLife:2'], effects: [{ trigger: 'onPlay', op: 'strikeOpposite', args: { n: 4 } }], text: '반감기 2. 소환: 맞은편 적 4 피해' }),
   u('og_titan', '오가네손 거신', 'decay', '초중원소', 'Og', 9, 11, 10, { keywords: ['halfLife:2'], text: '반감기 2' }),
+  // 기본 카드 풀 (덱 구성용 추가 카드): 비활성기체는 저항, 악티늄·초중원소는 반감기
+  u('he_balloon', '헬륨 풍선', 'decay', '비활성기체', 'He', 1, 1, 1, { keywords: ['resist:1'], text: '저항 1' }),
+  u('la_initiate', '란타넘 입문자', 'decay', '란타넘족', 'La', 1, 1, 1,
+    { effects: [{ trigger: 'onDeath', op: 'strikeOpposite', args: { n: 1 } }], text: '파괴 시: 맞은편 적 1 피해' }),
+  u('kr_lamp', '크립톤 등불', 'decay', '비활성기체', 'Kr', 2, 2, 2, { keywords: ['resist:1'], text: '저항 1' }),
+  u('pr_scribe', '프라세오디뮴 서기', 'decay', '란타넘족', 'Pr', 2, 1, 1,
+    { keywords: ['charge:3'], effects: [{ trigger: 'onCharge', op: 'draw', args: { n: 1 } }], text: '기력 3. 충전 시: 1장 드로우' }),
+  u('ac_ember', '악티늄 불씨', 'decay', '악티늄족', 'Ac', 2, 3, 2, { keywords: ['halfLife:2'], text: '반감기 2' }),
+  u('xe_ghost', '제논 망령', 'decay', '비활성기체', 'Xe', 3, 2, 3, { keywords: ['resist:2'], text: '저항 2' }),
+  u('sm_charmer', '사마륨 자력술사', 'decay', '란타넘족', 'Sm', 3, 2, 3,
+    { effects: [{ trigger: 'onDeath', op: 'strikeOpposite', args: { n: 2 } }], text: '파괴 시: 맞은편 적 2 피해' }),
+  u('pa_shard', '프로탁티늄 파편', 'decay', '악티늄족', 'Pa', 3, 4, 4, { keywords: ['halfLife:2'], text: '반감기 2' }),
+  u('mc_phantom', '모스코븀 환영', 'decay', '초중원소', 'Mc', 3, 4, 3,
+    { keywords: ['halfLife:1'], effects: [{ trigger: 'onPlay', op: 'strikeOpposite', args: { n: 2 } }], text: '반감기 1. 소환: 맞은편 적 2 피해' }),
+  u('gd_warden', '가돌리늄 수호자', 'decay', '란타넘족', 'Gd', 4, 3, 4, { keywords: ['resist:2'], text: '저항 2' }),
+  u('yb_oracle', '이터븀 신탁자', 'decay', '란타넘족', 'Yb', 4, 2, 2,
+    { effects: [{ trigger: 'onPlay', op: 'draw', args: { n: 1 } }, { trigger: 'onDeath', op: 'draw', args: { n: 1 } }], text: '소환: 1장 드로우. 파괴 시: 1장 드로우' }),
+  u('am_beacon', '아메리슘 경보기', 'decay', '악티늄족', 'Am', 4, 3, 3,
+    { keywords: ['charge:2'], effects: [{ trigger: 'onCharge', op: 'entropy', args: { n: 1 } }], text: '기력 2. 충전 시: 상대 엔트로피 +1' }),
+  u('dy_hunter', '디스프로슘 사냥꾼', 'decay', '란타넘족', 'Dy', 5, 4, 4,
+    { effects: [{ trigger: 'onPlay', op: 'strikeOpposite', args: { n: 2 } }], text: '소환: 맞은편 적 2 피해' }),
+  u('np_raider', '넵투늄 약탈자', 'decay', '악티늄족', 'Np', 5, 6, 5,
+    { keywords: ['halfLife:3'], effects: [{ trigger: 'onDeath', op: 'entropy', args: { n: 1 } }], text: '반감기 3. 파괴 시: 상대 엔트로피 +1' }),
+  u('cm_furnace', '퀴륨 용광로', 'decay', '악티늄족', 'Cm', 6, 7, 5,
+    { keywords: ['halfLife:2'], effects: [{ trigger: 'onDeath', op: 'entropy', args: { n: 2 } }], text: '반감기 2. 파괴 시: 상대 엔트로피 +2' }),
+  u('lv_reaper', '리버모륨 수확자', 'decay', '초중원소', 'Lv', 6, 8, 5,
+    { keywords: ['halfLife:2'], effects: [{ trigger: 'onPlay', op: 'entropy', args: { n: 1 } }], text: '반감기 2. 소환: 상대 엔트로피 +1' }),
+  u('cf_bomb', '캘리포늄 폭탄', 'decay', '악티늄족', 'Cf', 7, 6, 5,
+    { keywords: ['halfLife:2'], effects: [{ trigger: 'onDeath', op: 'strikeOpposite', args: { n: 4 } }, { trigger: 'onDeath', op: 'entropy', args: { n: 2 } }], text: '반감기 2. 파괴 시: 맞은편 적 4 피해, 상대 엔트로피 +2' }),
+  u('ts_storm', '테네신 폭풍', 'decay', '초중원소', 'Ts', 8, 9, 8,
+    { keywords: ['halfLife:2'], effects: [{ trigger: 'onPlay', op: 'strikeOpposite', args: { n: 2 } }], text: '반감기 2. 소환: 맞은편 적 2 피해' }),
 ];
 
 const byId = new Map(CARDS.map((c) => [c.id, c]));

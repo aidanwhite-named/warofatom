@@ -7,12 +7,17 @@
     "test": "vitest run",
     "sim": "tsx src/sim/run.ts",
     "tune": "tsx src/sim/tune.ts",
+    "elements": "tsx src/sim/elements.ts",
+    "card": "tsx src/balance/card.ts",
+    "card:ui": "vite src/balance/ui",
+    "calibrate": "tsx src/balance/calibrate.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
+    "vite": "^8.3.5",
     "vitest": "^5.0.5"
   }
 }

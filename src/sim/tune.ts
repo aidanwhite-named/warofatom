@@ -9,9 +9,14 @@ type Patch = (b: typeof BALANCE) => void;
 const base = structuredClone(BALANCE);
 const candidates: Record<string, Patch> = {
   current: () => {},
-  second1: (b) => { b.secondPlayerBonus = 1; },
-  second2: (b) => { b.secondPlayerBonus = 2; },
-  second1_hand46: (b) => { b.secondPlayerBonus = 1; b.startHand = [4, 6] as any; },
+  draw0: (b) => { b.decay.decayDraw = 0; },
+  draw0_start0: (b) => { b.decay.decayDraw = 0; b.decay.baseStart = 0; },
+  draw0_every3_start2: (b) => { b.decay.decayDraw = 0; b.decay.baseEvery = 3; b.decay.baseStart = 2; },
+  draw0_every3_board4: (b) => { b.decay.decayDraw = 0; b.decay.baseEvery = 3; b.decay.decayBoardBonus = 4; },
+  draw0_lat1: (b) => { b.decay.decayDraw = 0; b.covalent.startLattices = 1; },
+  draw0_lat1_pile8: (b) => { b.decay.decayDraw = 0; b.covalent.startLattices = 1; b.covalent.pileSize = 8; },
+  draw0_lat1_res0: (b) => { b.decay.decayDraw = 0; b.covalent.startLattices = 1; b.covalent.resonanceBonus = 0; },
+  draw0_start0_lat1_res0: (b) => { b.decay.decayDraw = 0; b.decay.baseStart = 0; b.covalent.startLattices = 1; b.covalent.resonanceBonus = 0; },
 };
 
 const N = Number(process.argv[2] ?? 150);

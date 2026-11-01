@@ -1,5 +1,6 @@
+import { getCard } from '../data/cards';
 import type { GameState, Unit } from './types';
-import { addEntropy, destroyUnit, drawCard } from './game';
+import { addEntropy, destroyUnit, drawCard, reducedDamage } from './game';
 
 export type EffectCtx = { s: GameState; p: 0 | 1; lane: number; unit: Unit | null };
 type Op = (ctx: EffectCtx, args: Record<string, number>) => void;
@@ -22,8 +23,14 @@ export const ops: Record<string, Op> = {
   strikeOpposite({ s, p, lane }, { n }) {
     const foe = s.players[1 - p].lanes[lane];
     if (!foe) return;
-    foe.hp -= n;
+    foe.hp -= reducedDamage(foe, n, 'resist');
     if (foe.hp <= 0) destroyUnit(s, (1 - p) as 0 | 1, lane, 'effect');
+  },
+  // 자신 체력 회복. 상한은 카드 체력 + 장착 아이템 체력 (강화로 이미 넘었으면 그대로)
+  healSelf({ unit }, { n }) {
+    if (!unit) return;
+    const cap = [unit.cardId, ...(unit.equipped ?? [])].reduce((a, id) => a + getCard(id).hp, 0);
+    if (unit.hp < cap) unit.hp = Math.min(cap, unit.hp + n);
   },
   gainPool({ s, p }, { n }) {
     s.players[p].pool += n;

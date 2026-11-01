@@ -8,17 +8,19 @@ export const DECKS: Record<Faction, DeckSpec> = {
   union: {
     faction: 'union',
     cards: [
-      ...x(3, 'li_scout'), ...x(3, 'na_runner'), ...x(2, 'k_burst'), ...x(2, 'mg_guard'),
+      ...x(2, 'li_scout'), ...x(2, 'na_runner'), ...x(2, 'k_burst'), ...x(1, 'mg_guard'),
       ...x(2, 'ca_builder'), ...x(2, 'f_striker'), ...x(2, 'cl_soldier'), ...x(2, 'o_igniter'),
       ...x(2, 's_brute'), ...x(2, 'br_reactor'), ...x(1, 'cs_detonator'), ...x(1, 'ba_titan'),
+      ...x(1, 'rx_combust'), ...x(1, 'rx_neutral'), ...x(1, 'rx_thermite'),
     ],
   },
   covalent: {
     faction: 'covalent',
     cards: [
-      ...x(2, 'si_wall'), ...x(3, 'b_sentinel'), ...x(3, 'n_lancer'), ...x(2, 'p_burner'),
-      ...x(2, 'ge_turret'), ...x(2, 'cu_conductor'), ...x(2, 'fe_knight'), ...x(2, 'as_toxin'),
+      ...x(2, 'si_wall'), ...x(2, 'b_sentinel'), ...x(2, 'n_lancer'), ...x(2, 'p_burner'),
+      ...x(1, 'ge_turret'), ...x(2, 'cu_conductor'), ...x(2, 'fe_knight'), ...x(2, 'as_toxin'),
       ...x(2, 'c_diamond'), ...x(2, 'ti_colossus'), ...x(1, 'w_juggernaut'), ...x(1, 'graphene'),
+      ...x(1, 'cnt_armor'), ...x(1, 'bn_blade'), ...x(1, 'wc_plating'),
     ],
   },
   decay: {
