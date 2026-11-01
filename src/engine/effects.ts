@@ -7,7 +7,7 @@ type Op = (ctx: EffectCtx, args: Record<string, number>) => void;
 
 // 효과 op 테이블. 카드 데이터의 effects[].op 가 여기 키를 가리킨다.
 export const ops: Record<string, Op> = {
-  // 상대 엔트로피 증가
+  // 상대 파멸 증가
   entropy({ s, p }, { n }) {
     addEntropy(s, (1 - p) as 0 | 1, n, 'effect');
   },
@@ -26,7 +26,7 @@ export const ops: Record<string, Op> = {
     foe.hp -= reducedDamage(foe, n, 'resist');
     if (foe.hp <= 0) destroyUnit(s, (1 - p) as 0 | 1, lane, 'effect');
   },
-  // 자신 체력 회복. 상한은 카드 체력 + 장착 아이템 체력 (강화로 이미 넘었으면 그대로)
+  // 자신 체력 회복. 상한은 카드 체력 + 장착 장비 체력 (강화로 이미 넘었으면 그대로)
   healSelf({ unit }, { n }) {
     if (!unit) return;
     const cap = [unit.cardId, ...(unit.equipped ?? [])].reduce((a, id) => a + getCard(id).hp, 0);

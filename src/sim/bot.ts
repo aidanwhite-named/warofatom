@@ -1,27 +1,39 @@
 import { getCard } from '../data/cards';
 import { BALANCE } from '../engine/config';
-import { getElement } from '../data/elements';
+import { getLand } from '../data/lands';
 import { applyAction, costOf, isLocked, reactDamage, reducedDamage } from '../engine/game';
-import type { Action, GameState } from '../engine/types';
+import { resourceRules } from '../engine/resources';
+import type { Action, GameState, PlayerState } from '../engine/types';
+
+// 유지비 유닛을 내도 다음 턴 시작에 판 위 유지비를 모두 낼 수 있는지 (못 내면 그 유닛이 파괴된다)
+function canKeep(me: PlayerState, upkeep: number, cost: number): boolean {
+  if (!upkeep) return true;
+  const next = structuredClone(me);
+  next.pool -= cost;
+  next.turns++;
+  resourceRules[me.faction].onTurnStart(next);
+  const total = me.lanes.reduce((a, u) => a + (u ? getCard(u.cardId).upkeep ?? 0 : 0), upkeep);
+  return next.pool >= total;
+}
 
 // 단순 탐욕 봇: 진영 자원 규칙을 '대충 합리적으로' 쓰는 수준. 밸런스 경향 확인용.
 export function chooseAction(s: GameState): Action {
   const p = s.active;
   const me = s.players[p];
   const foe = s.players[1 - p];
-  // locked: 주기 테크트리로 아직 낼 수 없는 카드
+  // locked: 전승 테크트리로 아직 낼 수 없는 카드
   const hand = me.hand.map((c) => { const def = getCard(c.cardId); return { c, def, cost: costOf(s, me, def), locked: isLocked(me, def) }; });
   const emptyLanes = me.lanes.flatMap((u, i) => (u ? [] : [i]));
 
-  // 1. 격자 배치
+  // 1. 성소 배치
   if (me.faction === 'covalent' && !me.latticePlayed && me.latticePile > 0) return { type: 'lattice' };
 
-  // 2. 붕괴의 교단: 고레벨 카드를 내기 위해 저레벨(≤3)이나 잠긴 손패 붕괴. 손패 2장은 남긴다.
+  // 2. 검은 달 교단: 고레벨 카드를 내기 위해 저레벨(≤3)이나 잠긴 손패 제물. 손패 2장은 남긴다.
   if (me.faction === 'decay' && emptyLanes.length) {
     const units = hand.filter((h) => !h.locked).sort((a, b) => b.def.level - a.def.level);
     const target = units[0];
-    // 2-0. 원소 붕괴 하나로 닿으면 그걸 먼저 쓴다. 방사성 원소는 붕괴 사슬로 엔트로피를 주니 안정 원소부터
-    const stable = me.elements.find((e) => !getElement(e).decaysTo);
+    // 2-0. 대지 제물 하나로 닿으면 그걸 먼저 쓴다. 저주받은 땅은 타락 사슬로 파멸을 주니 평범한 땅부터
+    const stable = me.elements.find((e) => !getLand(e).corruptsTo);
     if (target && stable && target.cost > me.pool && target.cost <= me.pool + BALANCE.elements.burnGain) {
       return { type: 'decay', from: 'element', element: stable };
     }
@@ -33,17 +45,17 @@ export function chooseAction(s: GameState): Action {
     }
   }
 
-  // 3. 낼 수 있는 가장 높은 레벨 유닛 소환 (가장 위협적인 적 맞은편에, 막을 적이 없으면 원소가 놓인 레인에)
+  // 3. 낼 수 있는 가장 높은 레벨 유닛 소환 (가장 위협적인 적 맞은편에, 막을 적이 없으면 대지가 놓인 레인에)
   if (emptyLanes.length) {
     const best = hand
-      .filter((h) => (h.def.kind ?? 'unit') === 'unit' && !h.locked && h.cost <= me.pool)
+      .filter((h) => (h.def.kind ?? 'unit') === 'unit' && !h.locked && h.cost <= me.pool && canKeep(me, h.def.upkeep ?? 0, h.cost))
       .sort((a, b) => b.def.level - a.def.level)[0];
     if (best) {
-      // 막을 적이 없으면 원소 레인 > 빈 레인. 원소 중에서는 지맥 계열, 연구 단계를 올려 주는 고주기 원소를 우선
+      // 막을 적이 없으면 대지 레인 > 빈 레인. 대지 중에서는 지맥 종족, 전승 단계를 올려 주는 높은 등급 대지를 우선
       const tileValue = (l: number) => {
         if (!s.tiles[l]) return -1;
-        const e = getElement(s.tiles[l]!);
-        return -0.5 + (e.group === s.leyline ? 0.1 : 0) + (e.period > me.tech ? 0.05 : 0);
+        const e = getLand(s.tiles[l]!);
+        return -0.5 + (e.race === s.leyline ? 0.1 : 0) + (e.tier > me.tech ? 0.05 : 0);
       };
       const threat = (l: number) => foe.lanes[l]?.atk ?? tileValue(l);
       const lane = emptyLanes.sort((a, b) => threat(b) - threat(a))[0];
@@ -51,7 +63,7 @@ export function chooseAction(s: GameState): Action {
     }
   }
 
-  // 3-1. 결속의 방벽: 남은 결합력으로 아이템을 가장 강한 내 유닛에 장착
+  // 3-1. 은빛 서약 기사단: 남은 신앙으로 장비을 가장 강한 내 유닛에 장착
   const myLanes = me.lanes.flatMap((u, i) => (u ? [i] : []));
   const item = hand.filter((h) => h.def.kind === 'item' && !h.locked && h.cost <= me.pool).sort((a, b) => b.def.level - a.def.level)[0];
   if (item && myLanes.length) {
@@ -59,7 +71,7 @@ export function chooseAction(s: GameState): Action {
     return { type: 'play', uid: item.c.uid, lane };
   }
 
-  // 3-2. 반응성 연맹: 마법. 맞은편 피해는 적 유닛이 있는 레인(공격력 높은 순)에만, 금화가 모자라면 엔트로피 여유가 있을 때 과부하
+  // 3-2. 잿불 마탑: 주문. 맞은편 피해는 적 유닛이 있는 레인(공격력 높은 순)에만, 금화가 모자라면 파멸 여유가 있을 때 폭주
   const o = BALANCE.union.overload;
   for (const h of hand.filter((x) => x.def.kind === 'spell' && !x.locked).sort((a, b) => b.def.level - a.def.level)) {
     const overload = h.cost > me.pool;
@@ -70,9 +82,9 @@ export function chooseAction(s: GameState): Action {
     return { type: 'play', uid: h.c.uid, lane: foeLanes[0] ?? 0, overload: overload || undefined };
   }
 
-  // 3-3. 반응성 연맹: 원소 반응. 원소를 쓰면 공명을 잃으므로 적 유닛을 잡을 수 있거나 원소가 3개 이상일 때만
+  // 3-3. 잿불 마탑: 융합 주문. 대지를 쓰면 공명을 잃으므로 적 유닛을 잡을 수 있거나 대지가 3개 이상일 때만
   if (me.faction === 'union' && me.pool >= BALANCE.elements.react.cost) {
-    const reactive = me.elements.filter((e) => getElement(e).nature !== 'noble');
+    const reactive = me.elements.filter((e) => getLand(e).aspect !== 'sealed');
     const pairs = reactive.flatMap((a, i) => reactive.slice(i + 1).map((b) => ({ a, b, dmg: reactDamage(a, b) })));
     const pair = pairs.sort((x, y) => y.dmg - x.dmg)[0];
     if (pair) {
@@ -82,7 +94,7 @@ export function chooseAction(s: GameState): Action {
     }
   }
 
-  // 4. 공격: 빈 레인이면 상대 엔트로피, 유닛이면 먼저 쳐서 잡거나(반격 없음) 반격을 버틸 때만
+  // 4. 공격: 빈 레인이면 상대 파멸, 유닛이면 먼저 쳐서 잡거나(반격 없음) 반격을 버틸 때만
   for (let lane = 0; lane < me.lanes.length; lane++) {
     const u = me.lanes[lane];
     if (!u || u.sick || u.attacked || u.atk <= 0) continue;
@@ -90,8 +102,8 @@ export function chooseAction(s: GameState): Action {
     if (!t || t.hp <= reducedDamage(t, u.atk, 'armor') || u.hp > reducedDamage(u, t.atk, 'armor')) return { type: 'attack', lane };
   }
 
-  // 5. 붕괴의 교단: 다음 턴 시작에 반감기로 사라질 유닛은 공격을 마친 뒤 보드 붕괴 (붕괴열로 3단계를 다시 돈다)
-  //    효과가 있는 유닛이면 가장 오래 남을 내 유닛(반감기 없음 우선, 체력 높은 순)에게 계승
+  // 5. 검은 달 교단: 다음 턴 시작에 소멸로 사라질 유닛은 공격을 마친 뒤 유닛 제물 (영혼로 3단계를 다시 돈다)
+  //    효과가 있는 유닛이면 가장 오래 남을 내 유닛(소멸 없음 우선, 체력 높은 순)에게 빙의
   if (me.faction === 'decay') {
     const expiring = me.lanes.find((u) => u?.halfLife === 1);
     if (expiring) {

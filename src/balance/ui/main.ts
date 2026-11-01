@@ -1,4 +1,6 @@
 import { CARDS } from '../../data/cards';
+import { FACTIONS } from '../../data/factions';
+import { getLand, LANDS } from '../../data/lands';
 import type { CardDef, EffectDef, Faction } from '../../engine/types';
 import { budgetOf, effectBody, fitStats, levelFor, scoreCard, triggerLabel } from '../score';
 import { WEIGHTS } from '../weights';
@@ -8,15 +10,15 @@ import { WEIGHTS } from '../weights';
 type When = 'play' | 'chain' | 'death' | 'charge';
 type Fx = { op: string; n: number; a: number; h: number; when: When };
 type Draft = {
-  id: string; name: string; faction: Faction; race: string; element: string;
+  id: string; name: string; faction: Faction; race: string; land: string; // land: 연고 대지 키 (빈 문자열이면 없음)
   level: number; atk: number; hp: number; upkeep: number; halfLife: number; armor: number; resist: number; charge: number; fx: Fx[]; desc: string; art?: string;
 };
 type Mode = 'stats' | 'level';
 
 const OP_LABEL: Record<string, string> = {
-  entropy: '상대 엔트로피 +', strikeOpposite: '맞은편 적 피해', draw: '드로우', gainPool: '자원 +', healSelf: '체력 회복', buffSelf: '자신 강화 (공/체)',
+  entropy: '상대 파멸 +', strikeOpposite: '맞은편 적 피해', draw: '드로우', gainPool: '자원 +', healSelf: '체력 회복', buffSelf: '자신 강화 (공/체)',
 };
-const FACTION_LABEL: Record<Faction, string> = { union: '반응성 연맹', covalent: '결속의 방벽', decay: '붕괴의 교단' };
+const FACTION_LABEL = Object.fromEntries(Object.entries(FACTIONS).map(([k, f]) => [k, f.name])) as Record<Faction, string>;
 const WEIGHTS_DEFAULT = structuredClone(WEIGHTS);
 // 가중치 항목의 한글 이름과 설명 (경로는 weights.ts 키)
 const WEIGHT_INFO: Record<string, [string, string]> = {
@@ -24,8 +26,8 @@ const WEIGHT_INFO: Record<string, [string, string]> = {
   atk: ['공격력 1', '공격력 1을 몇 점으로 칠지'],
   hp: ['체력 1', '체력 1을 몇 점으로 칠지'],
   armor: ['방어력 1', '받는 전투 피해 -1의 점수'],
-  resist: ['저항 1', '받는 능력·마법 피해 -1의 점수'],
-  'op.entropy': ['상대 엔트로피 +1', '엔트로피 1을 올리는 효과의 점수'],
+  resist: ['저항 1', '받는 능력·주문 피해 -1의 점수'],
+  'op.entropy': ['상대 파멸 +1', '파멸 1을 올리는 효과의 점수'],
   'op.strikeOpposite': ['맞은편 피해 1', '맞은편 적에게 주는 피해 1의 점수'],
   'op.draw': ['드로우 1장', '카드 1장 드로우의 점수'],
   'op.gainPool': ['자원 +1', '자원 1을 얻는 효과의 점수'],
@@ -36,10 +38,10 @@ const WEIGHT_INFO: Record<string, [string, string]> = {
   'chargeFactor.2': ['기력 2 배율', '기력 2 카드의 충전 시 효과 배율'],
   'chargeFactor.3': ['기력 3 배율', '기력 3 카드의 충전 시 효과 배율'],
   'chargeFactor.4': ['기력 4+ 배율', '기력 4 이상 카드의 충전 시 효과 배율'],
-  'halfLifeFactor.1': ['반감기 1턴', '반감기 1턴 카드의 스탯 배율'],
-  'halfLifeFactor.2': ['반감기 2턴', '반감기 2턴 카드의 스탯 배율'],
-  'halfLifeFactor.3': ['반감기 3턴', '반감기 3턴 카드의 스탯 배율'],
-  'halfLifeFactor.4': ['반감기 4턴+', '반감기 4턴 이상 카드의 스탯 배율'],
+  'halfLifeFactor.1': ['소멸 1턴', '소멸 1턴 카드의 스탯 배율'],
+  'halfLifeFactor.2': ['소멸 2턴', '소멸 2턴 카드의 스탯 배율'],
+  'halfLifeFactor.3': ['소멸 3턴', '소멸 3턴 카드의 스탯 배율'],
+  'halfLifeFactor.4': ['소멸 4턴+', '소멸 4턴 이상 카드의 스탯 배율'],
   'budget.base': ['예산 기본값', '예산 = 기본값 + 레벨당 증가 × 레벨'],
   'budget.perLevel': ['레벨당 예산', '레벨이 1 오를 때 늘어나는 점수'],
   upkeepRebate: ['유지비 1당 예산', '유지비 1을 붙이면 늘어나는 예산'],
@@ -53,7 +55,7 @@ const clampInt = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo
 const ops = () => [...Object.keys(WEIGHTS.op), 'buffSelf'];
 
 let mode: Mode = 'stats';
-let d: Draft = { id: 'new_card', name: '새 카드', faction: 'union', race: '알칼리', element: 'Li', level: 1, atk: 1, hp: 2, upkeep: 0, halfLife: 0, armor: 0, resist: 0, charge: 0, fx: [], desc: '' };
+let d: Draft = { id: 'new_card', name: '새 카드', faction: 'union', race: '화염술사', land: 'ember_hill', level: 1, atk: 1, hp: 2, upkeep: 0, halfLife: 0, armor: 0, resist: 0, charge: 0, fx: [], desc: '' };
 
 const WHEN_TRIGGER: Record<When, EffectDef['trigger']> = { play: 'onPlay', chain: 'onPlay', death: 'onDeath', charge: 'onCharge' };
 const fxDef = (f: Fx): EffectDef => ({
@@ -92,10 +94,10 @@ $('#editor').innerHTML = `
   <label>이름<input data-f="name"></label>
   <label>진영<select data-f="faction">${factionOpts}</select></label>
   <label>종족<input data-f="race" list="races"></label>
-  <label>원소<input data-f="element" list="elements"></label>
+  <label>연고 대지<input data-f="land" list="lands" placeholder="없음"></label>
   <label>코드 id<input data-f="id"></label>
   <datalist id="races">${[...new Set(CARDS.map((c) => c.race))].map((r) => `<option value="${r}">`).join('')}</datalist>
-  <datalist id="elements">${[...new Set(CARDS.map((c) => c.element))].map((r) => `<option value="${r}">`).join('')}</datalist>
+  <datalist id="lands">${LANDS.map((l) => `<option value="${l.key}">${l.name} (${l.race})</option>`).join('')}</datalist>
   <label>일러스트<span class="row"><input type="file" id="artFile" accept="image/*"><button id="artClear" style="flex:none">제거</button></span></label>
   <h2 style="margin-top:14px">능력</h2>
   <div id="fx"></div>
@@ -116,10 +118,10 @@ $('#side').innerHTML = `
     <div class="eq"><span>공격력</span>=<input type="number" data-f="atk" min="0"></div>
     <div class="eq"><span>체력</span>=<input type="number" data-f="hp" min="1"></div>
     <div class="eq" title="받는 전투 피해를 이만큼 줄입니다"><span>방어력</span>=<input type="number" data-f="armor" min="0"><small>전투 피해 −</small></div>
-    <div class="eq" title="받는 능력·마법 피해를 이만큼 줄입니다"><span>저항</span>=<input type="number" data-f="resist" min="0"><small>능력 피해 −</small></div>
+    <div class="eq" title="받는 능력·주문 피해를 이만큼 줄입니다"><span>저항</span>=<input type="number" data-f="resist" min="0"><small>능력 피해 −</small></div>
     <div class="eq" title="내 턴 시작·전투 생존마다 1씩 차고, 다 차면 '충전 시' 능력이 발동합니다 (0이면 없음)"><span>기력</span>=<input type="number" data-f="charge" min="0"><small>차면 충전 발동</small></div>
     <div class="eq"><span>유지비</span>=<input type="number" data-f="upkeep" min="0" max="${WEIGHTS.maxUpkeep}"><small>/턴</small></div>
-    <div class="eq"><span>반감기</span>=<select data-f="halfLife"><option value="0">없음</option>${[1, 2, 3, 4].map((n) => `<option value="${n}">${n}턴</option>`).join('')}</select></div>
+    <div class="eq"><span>소멸</span>=<select data-f="halfLife"><option value="0">없음</option>${[1, 2, 3, 4].map((n) => `<option value="${n}">${n}턴</option>`).join('')}</select></div>
     <div class="gauge" id="gauge"><i></i></div>
     <div class="verdict" id="verdict"></div>
   </section>
@@ -130,7 +132,7 @@ function syncEditor() {
     const el = $<HTMLInputElement>(`[data-f="${f}"]`);
     if (el !== document.activeElement) el.value = String(v);
   };
-  (['id', 'name', 'faction', 'race', 'element', 'level', 'atk', 'hp', 'upkeep', 'halfLife', 'armor', 'resist', 'charge', 'desc'] as const).forEach((f) => set(f, d[f]));
+  (['id', 'name', 'faction', 'race', 'land', 'level', 'atk', 'hp', 'upkeep', 'halfLife', 'armor', 'resist', 'charge', 'desc'] as const).forEach((f) => set(f, d[f]));
   $<HTMLInputElement>('[data-f="level"]').disabled = mode === 'stats';
   document.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
   $('#modeHint').textContent = mode === 'stats'
@@ -138,7 +140,7 @@ function syncEditor() {
     : '레벨을 정하면 공격력·체력이 예산에 맞춰집니다. 공격력을 바꾸면 체력이, 체력을 바꾸면 공격력이 따라 바뀝니다.';
 }
 
-const WHEN_LABEL: Record<When, string> = { play: '소환 시', chain: '연쇄 (이번 턴 연맹 유닛 소환 후)', death: '파괴 시', charge: '충전 시 (기력이 찰 때마다)' };
+const WHEN_LABEL: Record<When, string> = { play: '소환 시', chain: '연쇄 (이번 턴 마탑 유닛 소환 후)', death: '파괴 시', charge: '충전 시 (기력이 찰 때마다)' };
 
 function renderFx() {
   $('#fx').innerHTML = d.fx.map((f, i) => `
@@ -159,7 +161,7 @@ function renderFx() {
 function renderPreview() {
   const over = d.level > WEIGHTS.maxLevel;
   const lines = [
-    d.halfLife ? `<div class="kw">반감기 ${d.halfLife}</div>` : '',
+    d.halfLife ? `<div class="kw">소멸 ${d.halfLife}</div>` : '',
     ...d.fx.map((f) => `<div>${esc(effectText(f))}</div>`),
     d.desc ? `<div class="desc">${esc(d.desc)}</div>` : '',
   ].join('');
@@ -167,19 +169,19 @@ function renderPreview() {
     <h2>미리보기</h2>
     <div class="card ${d.faction}">
       <div class="top"><div class="lv${over ? ' over' : ''}" title="${over ? '최대 레벨 초과' : ''}">${over ? `${WEIGHTS.maxLevel}+` : d.level}</div>
-        <div class="nm">${esc(d.name)}</div><div class="el">${esc(d.element)}</div></div>
+        <div class="nm">${esc(d.name)}</div><div class="el">${esc(landName(d.land))}</div></div>
       <div class="body">
         <div class="stats">
           <div class="stat atk" title="공격력"><small>공격</small>${d.atk}</div>
           <div class="stat hp" title="체력"><small>체력</small>${d.hp}</div>
           ${d.armor ? `<div class="stat arm" title="받는 전투 피해 -${d.armor}"><small>방어</small>${d.armor}</div>` : ''}
-          ${d.resist ? `<div class="stat res" title="받는 능력·마법 피해 -${d.resist}"><small>저항</small>${d.resist}</div>` : ''}
+          ${d.resist ? `<div class="stat res" title="받는 능력·주문 피해 -${d.resist}"><small>저항</small>${d.resist}</div>` : ''}
           ${d.charge ? `<div class="stat chg" title="기력이 ${d.charge} 차면 충전 시 능력 발동"><small>기력</small>${d.charge}</div>` : ''}
           ${d.upkeep ? `<div class="stat upk" title="턴마다 내는 유지비"><small>유지</small>${d.upkeep}</div>` : ''}
         </div>
         <div class="main">
           <div class="art" id="art" style="${d.art ? `background-image:url(${d.art})` : ''}">
-            ${d.art ? '' : `<span class="sym">${esc(d.element)}</span><span class="empty">클릭해서 일러스트 추가</span>`}</div>
+            ${d.art ? '' : `<span class="empty">클릭해서 일러스트 추가</span>`}</div>
           <div class="type"><span>${FACTION_LABEL[d.faction]}</span><span>${esc(d.race)}</span></div>
           <div class="rules">${lines || '<span style="color:#666">능력·설명 없음</span>'}</div>
         </div>
@@ -188,20 +190,23 @@ function renderPreview() {
   $('#art').onclick = () => $<HTMLInputElement>('#artFile').click();
 }
 
+// 연고 대지 표시 이름 (모르는 키는 그대로)
+const landName = (key: string) => (key ? (LANDS.some((l) => l.key === key) ? getLand(key).name : key) : '');
+
 function tsSnippet(): string {
   const q = (s: string) => `'${s.replace(/'/g, "\\'")}'`;
   const fxs = effectDefs().map((e) => {
     const args = Object.entries(e.args ?? {}).map(([k, v]) => `${k}: ${v}`).join(', ');
     return `{ trigger: ${q(e.trigger)}, op: ${q(e.op)}, args: { ${args} }${e.chain ? ', chain: true' : ''} }`;
   });
-  const text = [d.halfLife ? `반감기 ${d.halfLife}` : '', d.armor ? `방어력 ${d.armor}` : '', d.resist ? `저항 ${d.resist}` : '', d.charge ? `기력 ${d.charge}` : '', ...d.fx.map(effectText), d.desc].filter(Boolean).join('. ');
+  const text = [d.halfLife ? `소멸 ${d.halfLife}` : '', d.armor ? `방어력 ${d.armor}` : '', d.resist ? `저항 ${d.resist}` : '', d.charge ? `기력 ${d.charge}` : '', ...d.fx.map(effectText), d.desc].filter(Boolean).join('. ');
   const extra = [
     d.upkeep ? `upkeep: ${d.upkeep}` : '',
     keywords() ? `keywords: [${keywords()!.map(q).join(', ')}]` : '',
     fxs.length ? `effects: [${fxs.join(', ')}]` : '',
     text ? `text: ${q(text)}` : '',
   ].filter(Boolean);
-  return `u(${[q(d.id), q(d.name), q(d.faction), q(d.race), q(d.element), d.level, d.atk, d.hp].join(', ')}${extra.length ? `,\n    { ${extra.join(', ')} }` : ''}),`;
+  return `u(${[q(d.id), q(d.name), q(d.faction), q(d.race), d.land ? q(d.land) : 'null', d.level, d.atk, d.hp].join(', ')}${extra.length ? `,\n    { ${extra.join(', ')} }` : ''}),`;
 }
 
 function weightLeaves(o: any, path: string[] = []): string[][] {
@@ -262,7 +267,7 @@ const kwNum = (c: CardDef, key: string) => Number(c.keywords?.find((k) => k.star
 
 function loadCard(c: CardDef) {
   d = {
-    id: c.id, name: c.name, faction: c.faction, race: c.race, element: c.element, level: c.level,
+    id: c.id, name: c.name, faction: c.faction, race: c.race, land: c.land ?? '', level: c.level,
     atk: c.atk, hp: c.hp, upkeep: c.upkeep ?? 0, desc: '',
     halfLife: kwNum(c, 'halfLife'), armor: kwNum(c, 'armor'), resist: kwNum(c, 'resist'), charge: kwNum(c, 'charge'),
     fx: (c.effects ?? []).map((e) => ({
@@ -310,7 +315,7 @@ editor.addEventListener('change', (ev) => {
 });
 editor.addEventListener('input', (ev) => {
   const el = ev.target as HTMLInputElement;
-  if (el.dataset.f === 'name' || el.dataset.f === 'race' || el.dataset.f === 'element' || el.dataset.f === 'desc') { (d as any)[el.dataset.f] = el.value; renderPreview(); }
+  if (el.dataset.f === 'name' || el.dataset.f === 'race' || el.dataset.f === 'land' || el.dataset.f === 'desc') { (d as any)[el.dataset.f] = el.value; renderPreview(); }
 });
 editor.addEventListener('click', (ev) => {
   const t = ev.target as HTMLElement;

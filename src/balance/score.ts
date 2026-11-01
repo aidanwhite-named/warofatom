@@ -17,7 +17,7 @@ const halfLifeOf = (def: Pick<CardDef, 'keywords'>) => keywordOf(def, 'halfLife'
 // 능력 한 줄 설명 (카드 문구와 점수표가 같이 쓴다)
 export function effectBody(op: string, a: Record<string, number>): string {
   switch (op) {
-    case 'entropy': return `상대 엔트로피 +${a.n}`;
+    case 'entropy': return `상대 파멸 +${a.n}`;
     case 'strikeOpposite': return `맞은편 적 ${a.n} 피해`;
     case 'draw': return `${a.n}장 드로우`;
     case 'gainPool': return `자원 +${a.n}`;
@@ -44,7 +44,7 @@ export function scoreCard(def: Pick<CardDef, 'level' | 'atk' | 'hp' | 'upkeep' |
   const hl = halfLifeOf(def);
   const stats = def.atk * W.atk + def.hp * W.hp;
   const factor = hl === undefined ? 1 : W.halfLifeFactor[Math.min(hl, 4)] ?? 1;
-  items.push({ label: `스탯 ${def.atk}/${def.hp}${hl === undefined ? '' : ` (반감기 ${hl} ×${factor})`}`, points: stats * factor });
+  items.push({ label: `스탯 ${def.atk}/${def.hp}${hl === undefined ? '' : ` (소멸 ${hl} ×${factor})`}`, points: stats * factor });
   const armor = keywordOf(def, 'armor');
   if (armor) items.push({ label: `방어력 ${armor}`, points: armor * W.armor });
   const resist = keywordOf(def, 'resist');

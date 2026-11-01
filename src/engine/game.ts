@@ -1,5 +1,6 @@
 import { getCard } from '../data/cards';
-import { getElement, TILE_POOL } from '../data/elements';
+import { FACTION_RACES } from '../data/factions';
+import { getLand, LAND_POOL } from '../data/lands';
 import { BALANCE } from './config';
 import { ops } from './effects';
 import { decayGain, resourceRules } from './resources';
@@ -9,7 +10,7 @@ import { LANES } from './types';
 
 export type DeckSpec = { faction: Faction; cards: string[] };
 
-// 진영 고유 카드 종류. 표에 없는 종류는 엔진이 거부한다 (교단의 고유 행동은 카드가 아니라 붕괴·계승)
+// 진영 고유 카드 종류. 표에 없는 종류는 엔진이 거부한다 (교단의 고유 행동은 카드가 아니라 제물·빙의)
 export const FACTION_KINDS: Record<Faction, CardKind[]> = {
   union: ['unit', 'spell'],
   covalent: ['unit', 'item'],
@@ -48,21 +49,21 @@ export function createGame(a: DeckSpec, b: DeckSpec, seed = 1): GameState {
     };
   };
   const players: [PlayerState, PlayerState] = [mkPlayer(a), mkPlayer(b)];
-  // 원소 타일: 풀을 섞어 레인마다 하나씩 놓고 나머지는 보충용
+  // 대지: 풀을 섞어 레인마다 하나씩 놓고 나머지는 보충용
   let tiles: (string | null)[] = Array(LANES).fill(null);
   let tileBag: string[] = [];
   if (BALANCE.elements.enabled) {
-    const [bag, ns] = shuffle(TILE_POOL, rng);
+    const [bag, ns] = shuffle(LAND_POOL, rng);
     rng = ns;
     tiles = bag.slice(0, LANES);
     tileBag = bag.slice(LANES);
   }
-  // 지맥: 처음 깔린 원소 중 하나의 계열 (판에 지맥 원소가 항상 하나 이상 있도록)
+  // 지맥: 처음 깔린 대지 중 하나의 종족 (판에 지맥 대지가 항상 하나 이상 있도록)
   let leyline: string | null = null;
   if (BALANCE.elements.enabled && BALANCE.elements.leyline.enabled) {
     const [r, ns] = nextRandom(rng);
     rng = ns;
-    leyline = getElement(tiles[Math.floor(r * LANES)]!).group;
+    leyline = getLand(tiles[Math.floor(r * LANES)]!).race;
   }
   const s: GameState = {
     players,
@@ -100,7 +101,7 @@ export function drawCard(s: GameState, p: 0 | 1) {
   emit(s, { t: 'draw', p, cardId: c.cardId });
 }
 
-// 엔트로피가 최대치에 도달하면 소멸 → 상대 승리
+// 파멸이 최대치에 도달하면 패배 → 상대 승리
 export function addEntropy(s: GameState, p: 0 | 1, amount: number, cause: EntropyCause) {
   if (amount <= 0) return;
   const pl = s.players[p];
@@ -142,18 +143,49 @@ export function reducedDamage(u: Unit, dmg: number, key: 'armor' | 'resist'): nu
   return Math.max(0, dmg - total);
 }
 
-// 공명 배율: 지맥 계열이면 resonanceMult배
+// 공명 배율: 지맥 종족이면 resonanceMult배
 function resonance(s: GameState, group: string): number {
   return group === s.leyline ? BALANCE.elements.leyline.resonanceMult : 1;
 }
 
-// 카드 비용: 같은 원소를 획득했으면 공명 할인 (최소 1)
-export function costOf(s: GameState, pl: PlayerState, def: CardDef): number {
-  if (!pl.elements.includes(def.element)) return def.level;
-  return Math.max(1, def.level - BALANCE.elements.costDiscount * resonance(s, getElement(def.element).group));
+// 레벨 = 색 아이콘 + 빈 아이콘(유지비). 색 아이콘은 그 세력의 힘, 빈 아이콘은 어느 세력 자원으로도 같은 값
+export function colorIcons(def: CardDef): number {
+  return def.level - (def.upkeep ?? 0);
 }
 
-// 주기 테크트리: 낼 수 있는 카드 레벨 상한 (진영별 기본값)
+// 객원 가산: 내 세력이 아닌 카드는 남의 색 아이콘 하나당 비용 +colorTax.
+// 그 카드 세력의 대지를 하나라도 가졌으면 현지 협력으로 가산 없음
+export function foreignTax(pl: PlayerState, def: CardDef): number {
+  if (def.faction === pl.faction) return 0;
+  if (BALANCE.deck.guestWaiver && pl.elements.some((e) => FACTION_RACES[def.faction].includes(getLand(e).race))) return 0;
+  return Math.ceil(colorIcons(def) * BALANCE.deck.colorTax);
+}
+
+// 카드 비용: 레벨 + 객원 가산, 연고 대지를 점령했으면 공명 할인 (최소 1)
+export function costOf(s: GameState, pl: PlayerState, def: CardDef): number {
+  const base = def.level + foreignTax(pl, def);
+  if (!def.land || !pl.elements.includes(def.land)) return base;
+  return Math.max(1, base - BALANCE.elements.costDiscount * resonance(s, getLand(def.land).race));
+}
+
+// 덱 구성 규칙 위반 목록 (빈 배열이면 통과). docs/rules.md 3-1절
+export function validateDeck(spec: DeckSpec): string[] {
+  const d = BALANCE.deck;
+  const errors: string[] = [];
+  if (spec.cards.length !== d.size) errors.push(`덱은 ${d.size}장이어야 한다 (지금 ${spec.cards.length}장)`);
+  const counts = new Map<string, number>();
+  for (const id of spec.cards) counts.set(id, (counts.get(id) ?? 0) + 1);
+  for (const [id, n] of counts) {
+    const def = getCard(id);
+    if (n > d.copies) errors.push(`${def.name}: 같은 카드는 ${d.copies}장까지 (지금 ${n}장)`);
+    if (def.faction !== spec.faction && !FACTION_KINDS[spec.faction].includes(def.kind ?? 'unit')) errors.push(`${def.name}: 객원으로 쓸 수 없는 종류`);
+  }
+  const guests = spec.cards.filter((id) => getCard(id).faction !== spec.faction).length;
+  if (guests > d.guestMax) errors.push(`객원 카드는 ${d.guestMax}장까지 (지금 ${guests}장)`);
+  return errors;
+}
+
+// 전승 테크트리: 낼 수 있는 카드 레벨 상한 (진영별 기본값)
 export function levelCap(pl: PlayerState): number {
   const t = BALANCE.elements.tech;
   if (!BALANCE.elements.enabled || !t.enabled) return Infinity;
@@ -164,13 +196,13 @@ export function isLocked(pl: PlayerState, def: CardDef): boolean {
   return def.level > levelCap(pl);
 }
 
-// 원소를 얻으면 연구 단계 갱신
+// 대지를 얻으면 전승 단계 갱신
 function gainElement(pl: PlayerState, element: string) {
   pl.elements.push(element);
-  pl.tech = Math.max(pl.tech, getElement(element).period);
+  pl.tech = Math.max(pl.tech, getLand(element).tier);
 }
 
-// 레인 장악: 내 유닛만 있는 레인에서 내 턴을 captureTurns번 연속 시작하면 그 원소를 가져오고, 빈자리는 보충한다
+// 레인 점령: 내 유닛만 있는 레인에서 내 턴을 captureTurns번 연속 시작하면 그 대지를 가져오고, 빈자리는 보충한다
 function captureTiles(s: GameState, p: 0 | 1) {
   const pl = s.players[p];
   const foe = s.players[1 - p];
@@ -187,30 +219,30 @@ function captureTiles(s: GameState, p: 0 | 1) {
   });
 }
 
-// 교단 붕괴 사슬: 가진 방사성 원소가 매 턴 한 단계씩 붕괴하고, 그때마다 상대 엔트로피 증가
+// 교단 타락 사슬: 가진 저주받은 땅이 매 턴 한 단계씩 타락하고, 그때마다 상대 파멸 증가
 function transmute(s: GameState, p: 0 | 1) {
   const pl = s.players[p];
   pl.elements = pl.elements.map((from) => {
-    const to = getElement(from).decaysTo;
+    const to = getLand(from).corruptsTo;
     if (!to) return from;
     emit(s, { t: 'transmute', p, from, to });
-    pl.tech = Math.max(pl.tech, getElement(to).period);
+    pl.tech = Math.max(pl.tech, getLand(to).tier);
     addEntropy(s, (1 - p) as 0 | 1, BALANCE.elements.chainEntropy, 'effect');
     return to;
   });
 }
 
-// 가진 원소 하나를 꺼낸다 (없으면 예외)
+// 가진 대지 하나를 꺼낸다 (없으면 예외)
 function takeElement(pl: PlayerState, element: string) {
   const i = pl.elements.indexOf(element);
   if (i < 0) throw new Error(`element ${element} not owned`);
   pl.elements.splice(i, 1);
 }
 
-// 연맹 반응 피해: 기본 + 금속·비금속 짝이면 이온 반응 보너스. 비활성 원소는 반응하지 않는다
+// 마탑 융합 주문 피해: 기본 + 빛·그림자 짝이면 상극 공명 보너스. 봉인된 땅은 쓸 수 없다
 export function reactDamage(a: string, b: string): number {
-  const na = getElement(a).nature, nb = getElement(b).nature;
-  if (na === 'noble' || nb === 'noble') throw new Error('noble elements do not react');
+  const na = getLand(a).aspect, nb = getLand(b).aspect;
+  if (na === 'sealed' || nb === 'sealed') throw new Error('sealed lands cannot be fused');
   const r = BALANCE.elements.react;
   return r.damage + (na !== nb ? r.ionBonus : 0);
 }
@@ -283,7 +315,7 @@ export function applyAction(state: GameState, action: Action): GameState {
       if (isLocked(pl, def)) throw new Error('card locked by tech');
       if (kind === 'unit' && pl.lanes[lane]) throw new Error('lane occupied');
       if (kind === 'item' && !pl.lanes[lane]) throw new Error('no unit to equip');
-      // 과부하(연맹 마법 전용): 내 엔트로피를 올리는 대신 비용 할인
+      // 폭주(마탑 주문 전용): 내 파멸을 올리는 대신 비용 할인
       const o = BALANCE.union.overload;
       if (action.overload && kind !== 'spell') throw new Error('only spells can overload');
       const cost = Math.max(0, costOf(s, pl, def) - (action.overload ? o.discount : 0));
@@ -291,12 +323,13 @@ export function applyAction(state: GameState, action: Action): GameState {
       pl.pool -= cost;
       pl.hand.splice(idx, 1);
       pl.cardsUsedThisTurn++;
-      const chained = def.faction === 'union' && pl.unitsPlayedThisTurn > 0;
+      // 연쇄는 마탑 덱의 마탑 카드만 (객원으로 빌려 온 마탑 유닛은 연쇄가 죽는다)
+      const chained = pl.faction === 'union' && def.faction === 'union' && pl.unitsPlayedThisTurn > 0;
       emit(s, { t: 'play', p, cardId: def.id, lane });
       if (action.overload) addEntropy(s, p, o.entropy, 'overload');
       if (kind === 'unit') {
-        // 계열 공명: 이 카드 종족과 같은 계열 원소를 가졌으면 +N/+N
-        const buff = pl.elements.some((e) => getElement(e).group === def.race) ? BALANCE.elements.groupBuff * resonance(s, def.race) : 0;
+        // 종족 공명: 이 카드 종족의 대지를 가졌으면 +N/+N
+        const buff = pl.elements.some((e) => getLand(e).race === def.race) ? BALANCE.elements.groupBuff * resonance(s, def.race) : 0;
         const unit: Unit = { uid: inst.uid, cardId: def.id, atk: def.atk + buff, hp: def.hp + buff, sick: true, attacked: false, halfLife: keywordValue(def, 'halfLife') };
         pl.lanes[lane] = unit;
         pl.unitsPlayedThisTurn++;
@@ -310,7 +343,7 @@ export function applyAction(state: GameState, action: Action): GameState {
         pl.discard.push(inst);
         runTrigger(s, p, lane, def, 'onPlay', target);
       } else {
-        // 마법: 고른 레인에서 효과만 발동하고 버림 더미로
+        // 주문: 고른 레인에서 효과만 발동하고 버림 더미로
         pl.discard.push(inst);
         runTrigger(s, p, lane, def, 'onPlay', null, chained);
       }
@@ -347,7 +380,7 @@ export function applyAction(state: GameState, action: Action): GameState {
         gainEnergy(s, p, action.lane);
         gainEnergy(s, (1 - p) as 0 | 1, action.lane);
       } else {
-        // 막을 유닛이 없으면 공격력만큼 상대 엔트로피 증가
+        // 막을 유닛이 없으면 공격력만큼 상대 파멸 증가
         emit(s, { t: 'attack', p, lane: action.lane, target: 'entropy', dmg: u.atk });
         addEntropy(s, (1 - p) as 0 | 1, u.atk, 'attack');
       }
@@ -376,7 +409,7 @@ export function applyAction(state: GameState, action: Action): GameState {
         if (lane < 0) throw new Error('unit not on board');
         cardId = pl.lanes[lane]!.cardId;
         gain = decayGain.board(getCard(cardId).level);
-        // 계승: 다른 내 유닛이 붕괴한 유닛의 효과를 물려받는다. 소환 시 효과는 그 자리에서 다시 발동
+        // 빙의: 다른 내 유닛이 제물로 바친 유닛의 효과를 물려받는다. 소환 시 효과는 그 자리에서 다시 발동
         const heirLane = action.heir === undefined ? -1 : pl.lanes.findIndex((h) => h?.uid === action.heir);
         if (action.heir !== undefined && (heirLane < 0 || heirLane === lane)) throw new Error('bad heir');
         destroyUnit(s, p, lane, 'decay');
@@ -406,7 +439,7 @@ export function applyAction(state: GameState, action: Action): GameState {
       break;
     }
     case 'endTurn': {
-      // 쓸 수 있는 카드가 있었는데 한 장도 쓰지 않았으면 엔트로피 페널티
+      // 쓸 수 있는 카드가 있었는데 한 장도 쓰지 않았으면 파멸 페널티
       if (pl.cardsUsedThisTurn === 0 && canUseCard(s)) addEntropy(s, p, BALANCE.hand.idleEntropy, 'idle');
       if (s.winner !== null) break;
       s.active = (1 - p) as 0 | 1;
@@ -417,7 +450,7 @@ export function applyAction(state: GameState, action: Action): GameState {
   return s;
 }
 
-// 지금 손패에서 낼(또는 붕괴할) 수 있는 카드가 있는지
+// 지금 손패에서 낼(또는 제물로 바칠) 수 있는 카드가 있는지
 function canUseCard(s: GameState): boolean {
   return legalActions(s).some((a) => a.type === 'play' || (a.type === 'decay' && a.from === 'hand'));
 }
@@ -452,7 +485,7 @@ export function legalActions(s: GameState): Action[] {
   });
   if (pl.faction === 'decay') for (const element of new Set(pl.elements)) out.push({ type: 'decay', from: 'element', element });
   if (pl.faction === 'union' && pl.pool >= BALANCE.elements.react.cost) {
-    const reactive = pl.elements.filter((e) => getElement(e).nature !== 'noble');
+    const reactive = pl.elements.filter((e) => getLand(e).aspect !== 'sealed');
     for (let i = 0; i < reactive.length; i++) for (let j = i + 1; j < reactive.length; j++) {
       for (let lane = 0; lane < LANES; lane++) out.push({ type: 'react', lane, a: reactive[i], b: reactive[j] });
     }

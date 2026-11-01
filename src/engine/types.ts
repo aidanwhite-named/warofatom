@@ -1,3 +1,6 @@
+// 코드 이름은 초기 설계(원소 세계관)에서 남은 내부 이름이고, 화면·문서는 판타지 세계관 이름을 쓴다 (docs/rules.md 0절 용어표)
+//   union = 잿불 마탑, covalent = 은빛 서약 기사단, decay = 검은 달 교단
+//   entropy = 파멸, elements/tiles = 대지, lattice = 성소, decay 행동 = 제물, halfLife = 소멸, react = 융합 주문
 export type Faction = 'union' | 'covalent' | 'decay';
 export type Trigger = 'onPlay' | 'onDeath' | 'onCharge'; // onCharge: 기력(charge:N)이 다 찰 때마다
 
@@ -5,7 +8,7 @@ export type EffectDef = {
   trigger: Trigger;
   op: string; // effects.ts 의 op 테이블 키
   args?: Record<string, number>;
-  chain?: boolean; // true면 '연쇄' 조건(이번 턴 연맹 유닛 소환 이력)일 때만 발동
+  chain?: boolean; // true면 '연쇄' 조건(이번 턴 마탑 유닛 소환 이력)일 때만 발동
 };
 
 export type CardKind = 'unit' | 'item' | 'spell';
@@ -15,7 +18,7 @@ export type CardDef = {
   name: string;
   faction: Faction;
   race: string;
-  element: string; // 원소 기호
+  land?: string; // 연고 대지 키 (가지면 비용 공명). 없는 카드도 있다
   level: number; // = 소환 비용
   upkeep?: number; // 내 턴 시작마다 지불하는 유지비 (못 내면 파괴)
   atk: number;
@@ -24,6 +27,7 @@ export type CardDef = {
   keywords?: string[]; // 'halfLife:3' 등
   effects?: EffectDef[];
   text?: string;
+  art?: string; // 일러스트 이미지 경로 (없으면 종족 색 그라데이션)
 };
 
 export type CardInstance = { uid: number; cardId: string };
@@ -37,29 +41,29 @@ export type Unit = {
   attacked: boolean;
   halfLife?: number; // 남은 턴 수
   energy?: number; // 모인 기력 (charge:N 키워드가 있는 유닛만)
-  inherited?: string[]; // 교단 계승으로 물려받은 카드 id (그 카드의 파괴 시 효과도 발동)
-  equipped?: string[]; // 방벽 장착 아이템 카드 id
+  inherited?: string[]; // 교단 빙의로 물려받은 카드 id (그 카드의 파괴 시 효과도 발동)
+  equipped?: string[]; // 기사단 장비 카드 id
 };
 
 export type PlayerState = {
   faction: Faction;
-  entropy: number; // 차오르면 소멸 (MAX_ENTROPY 도달 시 패배)
+  entropy: number; // 파멸. 차오르면 패배 (maxEntropy 도달 시)
   deck: CardInstance[];
   hand: CardInstance[];
   discard: CardInstance[];
   lanes: (Unit | null)[];
-  pool: number; // 지금 쓸 수 있는 자원 (금화/결합력/붕괴열)
-  lattices: number; // 전장에 놓인 격자 수
-  latticePile: number; // 아직 놓지 않은 격자 수 (덱과 별도)
+  pool: number; // 지금 쓸 수 있는 자원 (금화/신앙/영혼)
+  lattices: number; // 전장에 세운 성소 수
+  latticePile: number; // 아직 세우지 않은 성소 수 (덱과 별도)
   latticePlayed: boolean;
   unitsPlayedThisTurn: number;
   cardsUsedThisTurn: number; // 손패에서 사용한 장수 (다음 턴 시작에 이만큼 드로우)
   cardsUsedLastTurn: number;
-  cardsDecayedThisTurn: number; // 손패 붕괴 장수 (BALANCE.hand.decayCounts까지만 사용으로 센다)
+  cardsDecayedThisTurn: number; // 손패 제물 장수 (BALANCE.hand.decayCounts까지만 사용으로 센다)
   turns: number; // 내 턴이 시작된 횟수
-  elements: string[]; // 획득한 원소 기호
-  capture: number[]; // 레인별 장악 게이지
-  tech: number; // 연구 단계 = 지금까지 획득한 원소의 최고 주기 (원소를 써도 내려가지 않음)
+  elements: string[]; // 점령한 대지 키
+  capture: number[]; // 레인별 점령 게이지
+  tech: number; // 전승 단계 = 지금까지 점령한 대지의 최고 등급 (대지를 써도 내려가지 않음)
 };
 
 export type GameState = {
@@ -69,9 +73,9 @@ export type GameState = {
   winner: 0 | 1 | null;
   rng: number; // 시드 상태
   nextUid: number;
-  tiles: (string | null)[]; // 레인 가운데 놓인 원소 기호
-  tileBag: string[]; // 아직 나오지 않은 원소 (획득되면 여기서 채운다)
-  leyline: string | null; // 이번 판 지맥 계열 (원소 group)
+  tiles: (string | null)[]; // 레인 가운데 놓인 대지 키
+  tileBag: string[]; // 아직 나오지 않은 대지 (점령되면 여기서 채운다)
+  leyline: string | null; // 이번 판 지맥 종족 (대지 race)
   log: GameEvent[];
 };
 
@@ -79,9 +83,9 @@ export type Action =
   | { type: 'play'; uid: number; lane: number; overload?: boolean } // lane: 유닛은 빈 칸, 아이템은 내 유닛 칸, 마법은 대상 레인
   | { type: 'lattice' }
   | { type: 'attack'; lane: number }
-  | { type: 'decay'; from: 'hand' | 'board'; uid: number; heir?: number } // heir: 보드 붕괴 시 효과를 물려받을 내 유닛 uid
-  | { type: 'decay'; from: 'element'; element: string } // 교단: 가진 원소를 붕괴해 붕괴열
-  | { type: 'react'; lane: number; a: string; b: string } // 연맹: 가진 원소 2개로 반응
+  | { type: 'decay'; from: 'hand' | 'board'; uid: number; heir?: number } // 제물. heir: 유닛 제물 시 빙의할 내 유닛 uid
+  | { type: 'decay'; from: 'element'; element: string } // 교단: 가진 대지를 제물로 바쳐 영혼
+  | { type: 'react'; lane: number; a: string; b: string } // 마탑: 가진 대지 2개로 융합 주문
   | { type: 'endTurn' };
 
 export type EntropyCause = 'natural' | 'attack' | 'effect' | 'fatigue' | 'overload' | 'idle';

@@ -16,7 +16,7 @@ export const resourceRules: Record<Faction, ResourceRule> = {
   covalent: {
     onTurnStart(p) {
       const b = BALANCE.covalent;
-      // 결합: 가진 원소도 격자처럼 결합력을 낸다
+      // 결합: 가진 대지도 성소처럼 신앙을 낸다
       p.pool = p.lattices + (p.lattices >= b.resonanceAt ? b.resonanceBonus : 0) + p.elements.length * BALANCE.elements.bondPool;
     },
   },

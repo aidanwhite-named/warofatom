@@ -135,6 +135,28 @@ export class Fx {
     d.remove();
   }
 
+  // 숫자 칸(el)의 값을 from에서 to로 세어 올리며(내리며) 통통 튀게 한다
+  async count(el: HTMLElement | null, from: number, to: number, ms = 520) {
+    if (!el) return;
+    el.textContent = String(from);
+    void anim(el, [{ transform: 'scale(1)', filter: 'none' }, { transform: 'scale(1.5)', filter: 'brightness(2)', offset: 0.35 }, { transform: 'scale(1)', filter: 'none' }], { duration: ms + 200 });
+    const t0 = performance.now();
+    await new Promise<void>((done) => {
+      const tick = (t: number) => {
+        const k = Math.min(1, (t - t0) / ms);
+        el.textContent = String(Math.round(from + (to - from) * k));
+        if (k < 1) requestAnimationFrame(tick); else done();
+      };
+      requestAnimationFrame(tick);
+    });
+  }
+
+  // el을 빛나게 한 뒤 작아지며 target 쪽으로 빨려 들어가게 하고, 그 뒤를 구슬이 따라간다 (제물)
+  async absorb(el: HTMLElement, target: Element, color: string, ms = 520) {
+    await anim(el, [{ filter: 'none' }, { filter: `brightness(1.8) drop-shadow(0 0 14px ${color})` }], { duration: 220, fill: 'forwards' });
+    await Promise.all([this.moveTo(el, target, 0.18, true, ms), sleep(ms * 0.35).then(() => this.orb(el, target, color))]);
+  }
+
   async banner(title: string, sub: string, cls: string, ms = 1100) {
     const d = document.createElement('div');
     d.className = `banner ${cls}`;

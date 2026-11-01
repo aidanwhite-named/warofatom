@@ -6,11 +6,11 @@ export const WEIGHTS = {
   atk: 1,
   hp: 1,
   armor: 2, // 방어력 1: 받는 전투 피해 -1 (전투가 잦아 체력 1보다 비싸게)
-  resist: 1, // 저항 1: 받는 효과·마법 피해 -1
+  resist: 1, // 저항 1: 받는 효과·주문 피해 -1
 
   // op별 인자 1당 점수
   op: {
-    entropy: 1.5, // 상대 엔트로피 +n
+    entropy: 1.5, // 상대 파멸 +n
     strikeOpposite: 1.2, // 맞은편 적 n 피해
     draw: 2.5, // n장 드로우
     gainPool: 2, // 자원 +n
@@ -21,7 +21,7 @@ export const WEIGHTS = {
   // 기력 N 유닛의 충전 시 효과에 곱한다. 살아 있는 동안 반복 발동하므로 N이 작을수록 1보다 크다
   chargeFactor: { 1: 2.5, 2: 1.5, 3: 1, 4: 0.7 } as Record<number, number>,
 
-  // 반감기 N이면 스탯 점수에 곱한다 (짧을수록 크게 할인)
+  // 소멸 N이면 스탯 점수에 곱한다 (짧을수록 크게 할인)
   halfLifeFactor: { 1: 0.6, 2: 0.85, 3: 0.9, 4: 0.95 } as Record<number, number>,
 
   // 레벨 N 카드의 예산 = base + perLevel * N

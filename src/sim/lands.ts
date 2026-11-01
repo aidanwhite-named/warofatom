@@ -1,19 +1,19 @@
 import { DECKS } from '../data/decks';
-import { ELEMENTS } from '../data/elements';
+import { LANDS } from '../data/lands';
 import { BALANCE } from '../engine/config';
 import { createGame } from '../engine/game';
 import type { Faction } from '../engine/types';
 import { playGame } from './bot';
 
-// 원소 타일의 영향 측정. 사용: npm run elements [N]  (N = 진영 조합당 판수)
-//   1) 같은 시드로 원소 끔 / 3단계까지(테크 없음) / 4단계까지 진영 상성 비교
+// 대지의 영향 측정. 사용: npm run lands [N]  (N = 진영 조합당 판수)
+//   1) 같은 시드로 대지 끔 / 3단계까지(테크 없음) / 4단계까지 진영 상성 비교
 //   2) 획득 수와 승패의 관계 (상관일 뿐: 이기고 있는 쪽이 레인을 지켜 획득하기도 쉽다)
-//   3) 원소별·지맥별: 그 원소가 처음 깔린 판 / 그 계열이 지맥인 판에서 각 진영 승률이 평소보다 얼마나 달라지는지.
-//      처음 깔리는 원소와 지맥은 무작위라 승패의 결과가 아니라 원인으로 볼 수 있다 (한 진영만 크게 밀어주는 원소·지맥 찾기)
+//   3) 대지별·지맥별: 그 대지가 처음 깔린 판 / 그 종족이 지맥인 판에서 각 진영 승률이 평소보다 얼마나 달라지는지.
+//      처음 깔리는 대지와 지맥은 무작위라 승패의 결과가 아니라 원인으로 볼 수 있다 (한 진영만 크게 밀어주는 대지·지맥 찾기)
 const N = Number(process.argv[2] ?? 300);
 const pairs: [Faction, Faction][] = [['union', 'covalent'], ['union', 'decay'], ['covalent', 'decay']];
 const factions: Faction[] = ['union', 'covalent', 'decay'];
-const KO: Record<Faction, string> = { union: '연맹', covalent: '방벽', decay: '교단' };
+const KO: Record<Faction, string> = { union: '마탑', covalent: '기사단', decay: '교단' };
 const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
 
 function play(a: Faction, b: Faction, i: number) {
@@ -36,7 +36,7 @@ function matchups(elements: boolean, tech: boolean): number[] {
 const off = matchups(false, false);
 const noTech = matchups(true, false);
 const on = matchups(true, true);
-console.log(`\n== 진영 상성: 원소 끔 → 3단계까지(테크 없음) → 4단계까지 (${N}판씩, 같은 시드) ==`);
+console.log(`\n== 진영 상성: 대지 끔 → 3단계까지(테크 없음) → 4단계까지 (${N}판씩, 같은 시드) ==`);
 pairs.forEach(([a, b], k) => console.log(`${KO[a]} vs ${KO[b]}: ${pct(off[k])} → ${pct(noTech[k])} → ${pct(on[k])}`));
 
 // 전부 켠 상태로 상세 기록
@@ -45,7 +45,7 @@ const games: Record<Faction, number> = { union: 0, covalent: 0, decay: 0 };
 const techSum: Record<Faction, number> = { union: 0, covalent: 0, decay: 0 };
 const wins: Record<Faction, number> = { union: 0, covalent: 0, decay: 0 };
 const zero = () => ({ union: 0, covalent: 0, decay: 0 });
-// 진영별 원소 이벤트 횟수 (획득, 연맹 반응, 교단 원소 붕괴, 교단 붕괴 사슬)
+// 진영별 대지 이벤트 횟수 (획득, 마탑 융합 주문, 교단 대지 제물, 교단 타락 사슬)
 const uses: Record<'capture' | 'react' | 'burn' | 'transmute', Record<Faction, number>> = { capture: zero(), react: zero(), burn: zero(), transmute: zero() };
 const byTile = new Map<string, Cell>();
 const byLeyline = new Map<string, Cell>();
@@ -78,8 +78,8 @@ for (const [a, b] of pairs) {
 console.log(`\n== 획득 ==`);
 const per = (n: number, f: Faction) => (n / games[f]).toFixed(2);
 for (const f of factions) {
-  const use = f === 'union' ? `반응 ${per(uses.react[f], f)}회` : f === 'decay' ? `원소 붕괴 ${per(uses.burn[f], f)}회, 붕괴 사슬 ${per(uses.transmute[f], f)}회` : '결합(자동)';
-  console.log(`${KO[f]}: 판당 획득 ${per(uses.capture[f], f)}개, ${use}, 판 끝 연구 단계 평균 ${per(techSum[f], f)}주기, 승률 ${pct(wins[f] / games[f])}`);
+  const use = f === 'union' ? `융합 주문 ${per(uses.react[f], f)}회` : f === 'decay' ? `대지 제물 ${per(uses.burn[f], f)}회, 타락 사슬 ${per(uses.transmute[f], f)}회` : '결합(자동)';
+  console.log(`${KO[f]}: 판당 획득 ${per(uses.capture[f], f)}개, ${use}, 판 끝 전승 단계 평균 ${per(techSum[f], f)}등급, 승률 ${pct(wins[f] / games[f])}`);
 }
 console.log(`획득 수가 다른 판에서 더 많이 획득한 쪽의 승률: ${pct(moreWins / Math.max(1, decided))} (${decided}판, 상관관계)`);
 
@@ -97,6 +97,6 @@ function printTable(title: string, rows: [string, Cell | undefined][]) {
     console.log(`${label} ${cells.join('  ')}`);
   }
 }
-const tiles = ELEMENTS.filter((x) => !x.product);
-printTable('원소별: 처음 깔린 판에서 각 진영 승률', tiles.map((e) => [`${e.symbol.padEnd(3)} ${e.group.padEnd(6)}`, byTile.get(e.symbol)]));
-printTable('지맥별: 그 계열이 지맥인 판에서 각 진영 승률', [...new Set(tiles.map((e) => e.group))].map((g) => [g.padEnd(6), byLeyline.get(g)]));
+const tiles = LANDS.filter((x) => !x.corrupted);
+printTable('대지별: 처음 깔린 판에서 각 진영 승률', tiles.map((e) => [`${e.name.padEnd(8)} ${e.race.padEnd(5)}`, byTile.get(e.key)]));
+printTable('지맥별: 그 종족이 지맥인 판에서 각 진영 승률', [...new Set(tiles.map((e) => e.race))].map((g) => [g.padEnd(6), byLeyline.get(g)]));

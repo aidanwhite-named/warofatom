@@ -36,7 +36,7 @@ function withCard(def: CardDef, patch: Partial<CardDef>, run: () => number): num
   try { return run(); } finally { Object.assign(def, orig); }
 }
 
-// 마법은 스탯이 없으니 같은 예산의 바닐라 '유닛'과 비교한다 (아이템은 바닐라 아이템)
+// 주문은 스탯이 없으니 같은 예산의 바닐라 '유닛'과 비교한다 (장비은 바닐라 장비)
 function vanillaOf(def: CardDef): Partial<CardDef> {
   const budget = budgetOf(def.level, def.upkeep ?? 0);
   const atk = def.atk + def.hp > 0 ? Math.round((budget * def.atk) / (def.atk + def.hp)) : Math.ceil(budget / 2);
@@ -78,8 +78,8 @@ for (const r of [...rows].sort((a, b) => Math.abs(simDiff(b) - b.scoreDiff) - Ma
   console.log(r.def.id.padEnd(14), r.def.faction.padEnd(9), String(r.copies).padStart(3), fmt(r.scoreDiff).padStart(7), fmt(simDiff(r)).padStart(6), fmt(gap).padStart(6), Math.abs(gap) > 2 ? ' ◀' : '');
 }
 
-// 효과 op별 가중치 제안: 효과 1개짜리, 반감기 없는 카드만 (효과 점수 + 차이) / (n × 할인)
-console.log('\n효과 가중치 제안 (효과 1개·반감기 없는 카드 기준)');
+// 효과 op별 가중치 제안: 효과 1개짜리, 소멸 없는 카드만 (효과 점수 + 차이) / (n × 할인)
+console.log('\n효과 가중치 제안 (효과 1개·소멸 없는 카드 기준)');
 const byOp = new Map<string, number[]>();
 for (const r of rows) {
   const fx = r.def.effects ?? [];
