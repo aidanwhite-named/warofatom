@@ -1,7 +1,7 @@
 import { getCard } from '../data/cards';
 import { BALANCE } from '../engine/config';
 import { getElement } from '../data/elements';
-import { applyAction, costOf, reactDamage } from '../engine/game';
+import { applyAction, costOf, isLocked, reactDamage } from '../engine/game';
 import type { Action, GameState } from '../engine/types';
 
 // 단순 탐욕 봇: 진영 자원 규칙을 '대충 합리적으로' 쓰는 수준. 밸런스 경향 확인용.
@@ -9,15 +9,16 @@ export function chooseAction(s: GameState): Action {
   const p = s.active;
   const me = s.players[p];
   const foe = s.players[1 - p];
-  const hand = me.hand.map((c) => { const def = getCard(c.cardId); return { c, def, cost: costOf(s, me, def) }; });
+  // locked: 주기 테크트리로 아직 낼 수 없는 카드
+  const hand = me.hand.map((c) => { const def = getCard(c.cardId); return { c, def, cost: costOf(s, me, def), locked: isLocked(me, def) }; });
   const emptyLanes = me.lanes.flatMap((u, i) => (u ? [] : [i]));
 
   // 1. 격자 배치
   if (me.faction === 'covalent' && !me.latticePlayed && me.latticePile > 0) return { type: 'lattice' };
 
-  // 2. 붕괴의 교단: 고레벨 카드를 내기 위해 저레벨(≤3) 손패 붕괴. 손패 2장은 남긴다.
+  // 2. 붕괴의 교단: 고레벨 카드를 내기 위해 저레벨(≤3)이나 잠긴 손패 붕괴. 손패 2장은 남긴다.
   if (me.faction === 'decay' && emptyLanes.length) {
-    const units = [...hand].sort((a, b) => b.def.level - a.def.level);
+    const units = hand.filter((h) => !h.locked).sort((a, b) => b.def.level - a.def.level);
     const target = units[0];
     // 2-0. 원소 붕괴 하나로 닿으면 그걸 먼저 쓴다. 방사성 원소는 붕괴 사슬로 엔트로피를 주니 안정 원소부터
     const stable = me.elements.find((e) => !getElement(e).decaysTo);
@@ -25,7 +26,7 @@ export function chooseAction(s: GameState): Action {
       return { type: 'decay', from: 'element', element: stable };
     }
     if (target && target.def.level >= 4 && target.cost > me.pool) {
-      const fuel = units.slice(1).filter((h) => h.def.level <= 3).sort((a, b) => a.def.level - b.def.level);
+      const fuel = hand.filter((h) => h !== target && (h.def.level <= 3 || h.locked)).sort((a, b) => a.def.level - b.def.level);
       let total = me.pool, used = 0;
       for (const h of fuel) { if (total >= target.cost) break; total += h.def.level + 1; used++; }
       if (total >= target.cost && hand.length - 1 - used >= 2) return { type: 'decay', from: 'hand', uid: fuel[0].c.uid };
@@ -35,11 +36,15 @@ export function chooseAction(s: GameState): Action {
   // 3. 낼 수 있는 가장 높은 레벨 유닛 소환 (가장 위협적인 적 맞은편에, 막을 적이 없으면 원소가 놓인 레인에)
   if (emptyLanes.length) {
     const best = hand
-      .filter((h) => (h.def.kind ?? 'unit') === 'unit' && h.cost <= me.pool)
+      .filter((h) => (h.def.kind ?? 'unit') === 'unit' && !h.locked && h.cost <= me.pool)
       .sort((a, b) => b.def.level - a.def.level)[0];
     if (best) {
-      // 막을 적이 없으면 지맥 원소 레인 > 원소 레인 > 빈 레인
-      const tileValue = (l: number) => (!s.tiles[l] ? -1 : getElement(s.tiles[l]!).group === s.leyline ? -0.4 : -0.5);
+      // 막을 적이 없으면 원소 레인 > 빈 레인. 원소 중에서는 지맥 계열, 연구 단계를 올려 주는 고주기 원소를 우선
+      const tileValue = (l: number) => {
+        if (!s.tiles[l]) return -1;
+        const e = getElement(s.tiles[l]!);
+        return -0.5 + (e.group === s.leyline ? 0.1 : 0) + (e.period > me.tech ? 0.05 : 0);
+      };
       const threat = (l: number) => foe.lanes[l]?.atk ?? tileValue(l);
       const lane = emptyLanes.sort((a, b) => threat(b) - threat(a))[0];
       return { type: 'play', uid: best.c.uid, lane };
@@ -48,7 +53,7 @@ export function chooseAction(s: GameState): Action {
 
   // 3-1. 결속의 방벽: 남은 결합력으로 아이템을 가장 강한 내 유닛에 장착
   const myLanes = me.lanes.flatMap((u, i) => (u ? [i] : []));
-  const item = hand.filter((h) => h.def.kind === 'item' && h.cost <= me.pool).sort((a, b) => b.def.level - a.def.level)[0];
+  const item = hand.filter((h) => h.def.kind === 'item' && !h.locked && h.cost <= me.pool).sort((a, b) => b.def.level - a.def.level)[0];
   if (item && myLanes.length) {
     const lane = myLanes.sort((a, b) => me.lanes[b]!.atk + me.lanes[b]!.hp - (me.lanes[a]!.atk + me.lanes[a]!.hp))[0];
     return { type: 'play', uid: item.c.uid, lane };
@@ -56,7 +61,7 @@ export function chooseAction(s: GameState): Action {
 
   // 3-2. 반응성 연맹: 마법. 맞은편 피해는 적 유닛이 있는 레인(공격력 높은 순)에만, 금화가 모자라면 엔트로피 여유가 있을 때 과부하
   const o = BALANCE.union.overload;
-  for (const h of hand.filter((x) => x.def.kind === 'spell').sort((a, b) => b.def.level - a.def.level)) {
+  for (const h of hand.filter((x) => x.def.kind === 'spell' && !x.locked).sort((a, b) => b.def.level - a.def.level)) {
     const overload = h.cost > me.pool;
     if (overload && (h.cost - o.discount > me.pool || me.entropy + o.entropy > BALANCE.maxEntropy - 8)) continue;
     const strikes = h.def.effects?.some((e) => e.op === 'strikeOpposite');

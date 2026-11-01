@@ -6,7 +6,7 @@ import type { Faction } from '../engine/types';
 import { playGame } from './bot';
 
 // 원소 타일의 영향 측정. 사용: npm run elements [N]  (N = 진영 조합당 판수)
-//   1) 같은 시드로 원소 끔 / 지맥만 끔 / 전부 켬 진영 상성 비교
+//   1) 같은 시드로 원소 끔 / 3단계까지(테크 없음) / 4단계까지 진영 상성 비교
 //   2) 획득 수와 승패의 관계 (상관일 뿐: 이기고 있는 쪽이 레인을 지켜 획득하기도 쉽다)
 //   3) 원소별·지맥별: 그 원소가 처음 깔린 판 / 그 계열이 지맥인 판에서 각 진영 승률이 평소보다 얼마나 달라지는지.
 //      처음 깔리는 원소와 지맥은 무작위라 승패의 결과가 아니라 원인으로 볼 수 있다 (한 진영만 크게 밀어주는 원소·지맥 찾기)
@@ -23,9 +23,9 @@ function play(a: Faction, b: Faction, i: number) {
   return { state, aSeat: (aFirst ? 0 : 1) as 0 | 1, startTiles: start.tiles.filter((t): t is string => !!t) };
 }
 
-function matchups(elements: boolean, leyline: boolean): number[] {
+function matchups(elements: boolean, tech: boolean): number[] {
   BALANCE.elements.enabled = elements;
-  BALANCE.elements.leyline.enabled = leyline;
+  BALANCE.elements.tech.enabled = tech;
   return pairs.map(([a, b]) => {
     let wins = 0;
     for (let i = 0; i < N; i++) { const { state, aSeat } = play(a, b, i); if (state.winner === aSeat) wins++; }
@@ -34,14 +34,15 @@ function matchups(elements: boolean, leyline: boolean): number[] {
 }
 
 const off = matchups(false, false);
-const noLey = matchups(true, false);
+const noTech = matchups(true, false);
 const on = matchups(true, true);
-console.log(`\n== 진영 상성: 원소 끔 → 지맥 없이 원소만 → 지맥까지 (${N}판씩, 같은 시드) ==`);
-pairs.forEach(([a, b], k) => console.log(`${KO[a]} vs ${KO[b]}: ${pct(off[k])} → ${pct(noLey[k])} → ${pct(on[k])}`));
+console.log(`\n== 진영 상성: 원소 끔 → 3단계까지(테크 없음) → 4단계까지 (${N}판씩, 같은 시드) ==`);
+pairs.forEach(([a, b], k) => console.log(`${KO[a]} vs ${KO[b]}: ${pct(off[k])} → ${pct(noTech[k])} → ${pct(on[k])}`));
 
 // 전부 켠 상태로 상세 기록
 type Cell = Record<Faction, { n: number; w: number }>;
 const games: Record<Faction, number> = { union: 0, covalent: 0, decay: 0 };
+const techSum: Record<Faction, number> = { union: 0, covalent: 0, decay: 0 };
 const wins: Record<Faction, number> = { union: 0, covalent: 0, decay: 0 };
 const zero = () => ({ union: 0, covalent: 0, decay: 0 });
 // 진영별 원소 이벤트 횟수 (획득, 연맹 반응, 교단 원소 붕괴, 교단 붕괴 사슬)
@@ -66,6 +67,7 @@ for (const [a, b] of pairs) {
     state.players.forEach((pl, seat) => {
       const won = state.winner === seat;
       games[pl.faction]++;
+      techSum[pl.faction] += pl.tech;
       if (won) wins[pl.faction]++;
       for (const el of startTiles) record(byTile, el, pl.faction, won);
       if (state.leyline) record(byLeyline, state.leyline, pl.faction, won);
@@ -77,7 +79,7 @@ console.log(`\n== 획득 ==`);
 const per = (n: number, f: Faction) => (n / games[f]).toFixed(2);
 for (const f of factions) {
   const use = f === 'union' ? `반응 ${per(uses.react[f], f)}회` : f === 'decay' ? `원소 붕괴 ${per(uses.burn[f], f)}회, 붕괴 사슬 ${per(uses.transmute[f], f)}회` : '결합(자동)';
-  console.log(`${KO[f]}: 판당 획득 ${per(uses.capture[f], f)}개, ${use}, 승률 ${pct(wins[f] / games[f])}`);
+  console.log(`${KO[f]}: 판당 획득 ${per(uses.capture[f], f)}개, ${use}, 판 끝 연구 단계 평균 ${per(techSum[f], f)}주기, 승률 ${pct(wins[f] / games[f])}`);
 }
 console.log(`획득 수가 다른 판에서 더 많이 획득한 쪽의 승률: ${pct(moreWins / Math.max(1, decided))} (${decided}판, 상관관계)`);
 

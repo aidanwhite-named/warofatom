@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getCard } from '../data/cards';
-import { getElement } from '../data/elements';
+import { ELEMENTS, getElement } from '../data/elements';
 import { DECKS } from '../data/decks';
 import { applyAction, createGame, legalActions } from './game';
 import { BALANCE } from './config';
@@ -419,5 +419,38 @@ describe('leyline (지맥)', () => {
     const buff = BALANCE.elements.groupBuff * l.resonanceMult;
     expect(after.players[0].lanes[1]).toMatchObject({ atk: 1 + buff, hp: 4 + buff });
     expect(after.players[0].pool).toBe(10 - Math.max(1, 2 - BALANCE.elements.costDiscount * l.resonanceMult));
+  });
+});
+
+describe('period tech tree (주기 테크트리)', () => {
+  it('caps playable level by the highest period ever captured, and spending elements keeps it', () => {
+    const t = BALANCE.elements.tech;
+    let s = createGame(DECKS.union, DECKS.covalent, 1);
+    s.leyline = null;
+    const [ba] = giveHand(s, 0, ['ba_titan']); // 바륨 거인 L7
+    s.players[0].pool = 10;
+    expect(t.baseLevel.union).toBeLessThan(7);
+    expect(() => applyAction(s, { type: 'play', uid: ba, lane: 0 })).toThrow('locked');
+    expect(legalActions(s).some((a) => a.type === 'play' && a.uid === ba)).toBe(false);
+
+    // (7 - offset)주기 원소를 장악으로 얻으면 L7이 열린다
+    const sym = ELEMENTS.find((e) => !e.product && e.period === 7 - t.periodOffset)!.symbol;
+    s.tiles[1] = sym;
+    s.players[0].lanes[1] = { uid: 990, cardId: 'li_scout', atk: 1, hp: 9, sick: false, attacked: false };
+    for (let i = 0; i < BALANCE.elements.captureTurns.union; i++) s = endTurn(endTurn(s));
+    expect(s.players[0].tech).toBe(7 - t.periodOffset);
+    // 반응으로 원소를 써도 연구 단계는 유지
+    s.players[0].elements.push('Na');
+    s.players[0].pool = 20;
+    s = applyAction(s, { type: 'react', lane: 0, a: sym, b: 'Na' });
+    expect(s.players[0].elements).not.toContain(sym);
+    expect(applyAction(s, { type: 'play', uid: ba, lane: 0 }).players[0].lanes[0]?.cardId).toBe('ba_titan');
+  });
+
+  it('decay is not limited (base level covers its whole deck)', () => {
+    const s = createGame(DECKS.decay, DECKS.union, 1);
+    const [og] = giveHand(s, 0, ['og_titan']); // L9
+    s.players[0].pool = 20;
+    expect(applyAction(s, { type: 'play', uid: og, lane: 0 }).players[0].lanes[0]?.cardId).toBe('og_titan');
   });
 });

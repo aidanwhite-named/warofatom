@@ -41,6 +41,7 @@ export function createGame(a: DeckSpec, b: DeckSpec, seed = 1): GameState {
       turns: 0,
       elements: [],
       capture: Array(LANES).fill(0),
+      tech: 0,
     };
   };
   const players: [PlayerState, PlayerState] = [mkPlayer(a), mkPlayer(b)];
@@ -147,6 +148,23 @@ export function costOf(s: GameState, pl: PlayerState, def: CardDef): number {
   return Math.max(1, def.level - BALANCE.elements.costDiscount * resonance(s, getElement(def.element).group));
 }
 
+// 주기 테크트리: 낼 수 있는 카드 레벨 상한 (진영별 기본값)
+export function levelCap(pl: PlayerState): number {
+  const t = BALANCE.elements.tech;
+  if (!BALANCE.elements.enabled || !t.enabled) return Infinity;
+  return Math.max(t.baseLevel[pl.faction], pl.tech + t.periodOffset);
+}
+
+export function isLocked(pl: PlayerState, def: CardDef): boolean {
+  return def.level > levelCap(pl);
+}
+
+// 원소를 얻으면 연구 단계 갱신
+function gainElement(pl: PlayerState, element: string) {
+  pl.elements.push(element);
+  pl.tech = Math.max(pl.tech, getElement(element).period);
+}
+
 // 레인 장악: 내 유닛만 있는 레인에서 내 턴을 captureTurns번 연속 시작하면 그 원소를 가져오고, 빈자리는 보충한다
 function captureTiles(s: GameState, p: 0 | 1) {
   const pl = s.players[p];
@@ -155,7 +173,7 @@ function captureTiles(s: GameState, p: 0 | 1) {
     if (!element) return;
     if (!pl.lanes[lane] || (foe.lanes[lane] && !BALANCE.elements.contest[pl.faction])) { pl.capture[lane] = 0; return; }
     if (++pl.capture[lane] < BALANCE.elements.captureTurns[pl.faction]) return;
-    pl.elements.push(element);
+    gainElement(pl, element);
     pl.capture[lane] = 0;
     foe.capture[lane] = 0;
     s.tiles[lane] = s.tileBag.shift() ?? null;
@@ -171,6 +189,7 @@ function transmute(s: GameState, p: 0 | 1) {
     const to = getElement(from).decaysTo;
     if (!to) return from;
     emit(s, { t: 'transmute', p, from, to });
+    pl.tech = Math.max(pl.tech, getElement(to).period);
     addEntropy(s, (1 - p) as 0 | 1, BALANCE.elements.chainEntropy, 'effect');
     return to;
   });
@@ -252,6 +271,7 @@ export function applyAction(state: GameState, action: Action): GameState {
       const kind = def.kind ?? 'unit';
       if (lane < 0 || lane >= LANES) throw new Error('bad lane');
       if (!FACTION_KINDS[pl.faction].includes(kind)) throw new Error(`${pl.faction} cannot play ${kind}`);
+      if (isLocked(pl, def)) throw new Error('card locked by tech');
       if (kind === 'unit' && pl.lanes[lane]) throw new Error('lane occupied');
       if (kind === 'item' && !pl.lanes[lane]) throw new Error('no unit to equip');
       // 과부하(연맹 마법 전용): 내 엔트로피를 올리는 대신 비용 할인
@@ -391,6 +411,7 @@ export function legalActions(s: GameState): Action[] {
     const kind = def.kind ?? 'unit';
     const lanes = kind === 'unit' ? emptyLanes : kind === 'item' ? unitLanes : Array.from({ length: LANES }, (_, i) => i);
     const cost = costOf(s, pl, def);
+    if (isLocked(pl, def)) { if (pl.faction === 'decay') out.push({ type: 'decay', from: 'hand', uid: c.uid }); continue; }
     if (cost <= pl.pool) for (const lane of lanes) out.push({ type: 'play', uid: c.uid, lane });
     if (kind === 'spell' && cost > pl.pool && cost - o.discount <= pl.pool) {
       for (const lane of lanes) out.push({ type: 'play', uid: c.uid, lane, overload: true });

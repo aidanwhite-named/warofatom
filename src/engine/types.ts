@@ -56,6 +56,7 @@ export type PlayerState = {
   turns: number; // 내 턴이 시작된 횟수
   elements: string[]; // 획득한 원소 기호
   capture: number[]; // 레인별 장악 게이지
+  tech: number; // 연구 단계 = 지금까지 획득한 원소의 최고 주기 (원소를 써도 내려가지 않음)
 };
 
 export type GameState = {

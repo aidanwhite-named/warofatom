@@ -16,11 +16,13 @@ export const BALANCE = {
   //   bondPool: 방벽이 가진 원소 1개당 턴 시작 결합력 +N, bondDraw: 방벽이 원소를 획득할 때 N장 드로우
   //   burnGain: 교단 원소 붕괴 시 붕괴열 +N, chainEntropy: 교단 방사성 원소가 한 단계 붕괴할 때마다 상대 엔트로피 +N
   //   leyline: 지맥 (2-3절). 처음 깔린 원소 중 하나의 계열이 이번 판 지맥 — 그 계열 원소의 공명이 resonanceMult배
+  //   tech: 주기 테크트리 (2-4절). 낼 수 있는 레벨 상한 = max(진영별 baseLevel, 지금까지 획득한 원소의 최고 주기 + periodOffset)
   elements: {
     enabled: true, captureTurns: { union: 2, covalent: 2, decay: 2 }, contest: { union: false, covalent: true, decay: false },
     costDiscount: 1, groupBuff: 1,
     react: { damage: 3, ionBonus: 1, entropy: 1, cost: 3 }, bondPool: 1, bondDraw: 1, burnGain: 2, chainEntropy: 1,
     leyline: { enabled: true, resonanceMult: 2 },
+    tech: { enabled: true, baseLevel: { union: 5, covalent: 5, decay: 9 }, periodOffset: 2 }, // 교단은 붕괴로 무거운 원소를 직접 만들어 제한 없음
   },
   decay: { baseStart: 1, baseEvery: 3, decayHandBonus: 0, decayBoardBonus: 2, decayDraw: 0, startHand: [5, 5], secondPool: 0 },
 };
