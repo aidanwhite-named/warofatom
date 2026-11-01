@@ -13,6 +13,13 @@ describe('scoreCard', () => {
     expect(budgetOf(4, 2)).toBeGreaterThan(budgetOf(4, 0));
   });
 
+  it('one upkeep sits between the same level and the next level', () => {
+    for (let lv = 1; lv < 9; lv++) {
+      expect(budgetOf(lv, 1)).toBeGreaterThan(budgetOf(lv));
+      expect(budgetOf(lv, 1)).toBeLessThan(budgetOf(lv + 1));
+    }
+  });
+
   it('splits spend the remaining budget on atk/hp', () => {
     const splits = statSplits(3, 0, 0);
     expect(splits.every((s) => s.atk + s.hp === budgetOf(3))).toBe(true);
@@ -23,7 +30,7 @@ describe('levelFor / fitStats', () => {
   it('level is the lowest one whose budget covers the score, upkeep lowers it', () => {
     expect(levelFor(budgetOf(4))).toBe(4);
     expect(levelFor(budgetOf(4) + 0.1)).toBe(5);
-    expect(levelFor(budgetOf(4), 1)).toBeLessThan(4);
+    expect(levelFor(budgetOf(4), 2)).toBeLessThan(4);
     expect(levelFor(999)).toBeGreaterThan(9);
   });
 

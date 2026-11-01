@@ -1,5 +1,5 @@
 @echo off
-rem War of Atom web prototype: starts the dev server and opens the browser.
+rem Aethelgard web prototype: starts the dev server and opens the browser.
 rem Close this window to stop the server.
 cd /d "%~dp0"
 if not exist node_modules (

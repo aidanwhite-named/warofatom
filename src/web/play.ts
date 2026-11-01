@@ -2,7 +2,7 @@ import { getCard } from '../data/cards';
 import { ASPECT_LABEL, getLand } from '../data/lands';
 import { FACTIONS } from '../data/factions';
 import { BALANCE } from '../engine/config';
-import { applyAction, costOf, createGame, foreignTax, isLocked, legalActions, levelCap, reducedDamage, type DeckSpec } from '../engine/game';
+import { applyAction, canAttack, costOf, createGame, foreignTax, isLocked, legalActions, levelCap, reducedDamage, type DeckSpec } from '../engine/game';
 import { decayGain } from '../engine/resources';
 import type { Action, CardDef, EntropyCause, Faction, GameEvent, GameState, PlayerState, Unit } from '../engine/types';
 import { LANES } from '../engine/types';
@@ -23,7 +23,7 @@ const STAGE_W = 1280, STAGE_H = 760;
 const COLOR: Record<Faction, string> = { union: '#ff9d4d', covalent: '#5aa8ff', decay: '#b483ff' };
 const ICON: Record<Faction, string> = { union: '🔥', covalent: '✠', decay: '☾' };
 const REASON = { combat: '전투', halfLife: '소멸', decay: '제물', effect: '효과', upkeep: '유지비' };
-const CAUSE: Record<EntropyCause, string> = { natural: '시간의 흐름', attack: '공격', effect: '효과', fatigue: '덱 고갈', overload: '폭주', idle: '방치' };
+const CAUSE: Record<EntropyCause, string> = { natural: '시간의 흐름', attack: '공격', effect: '효과', fatigue: '덱 고갈', overload: '폭주', idle: '방치', shuffle: '셔플', borrow: '선불 상환' };
 
 export function startMatch(root: HTMLElement, o: MatchOpts): () => void {
   const m = new Match(root, o);
@@ -259,9 +259,9 @@ class Match {
       }
       case 'attack': {
         const att = this.q(`[data-slot="${side}-${e.lane}"] .unit`);
-        const tgt = this.q(`[data-slot="${this.other(side)}-${e.lane}"]`);
+        const tgt = this.q(`[data-slot="${this.other(side)}-${e.at}"]`);
         if (att && tgt) await this.fx.lunge(att, tgt, e.target === 'unit' ? '#ffd166' : '#ff5d8f');
-        const defender = this.s.players[1 - e.p].lanes[e.lane];
+        const defender = this.s.players[1 - e.p].lanes[e.at];
         if (e.target === 'unit' && defender && tgt) {
           const blocked = e.dmg - reducedDamage(defender, e.dmg, 'armor');
           if (blocked > 0) { const c = this.fx.center(tgt); this.fx.float(`🛡 -${blocked}`, c.x, c.y - 50, 'buff'); }
@@ -273,12 +273,12 @@ class Match {
       case 'counter': {
         // 공격을 버텨낸 유닛이 되받아친다
         const def = this.q(`[data-slot="${side}-${e.lane}"] .unit`);
-        const tgt = this.q(`[data-slot="${this.other(side)}-${e.lane}"]`);
+        const tgt = this.q(`[data-slot="${this.other(side)}-${e.at}"]`);
         if (!def || !tgt) break;
         const c = this.fx.center(def);
         this.fx.float('반격!', c.x, c.y - 60, 'buff');
         await this.fx.lunge(def, tgt, '#9ec5ff');
-        const attacker = this.s.players[1 - e.p].lanes[e.lane];
+        const attacker = this.s.players[1 - e.p].lanes[e.at];
         const blocked = attacker ? e.dmg - reducedDamage(attacker, e.dmg, 'armor') : 0;
         if (blocked > 0) { const t = this.fx.center(tgt); this.fx.float(`🛡 -${blocked}`, t.x, t.y - 50, 'buff'); }
         break;
@@ -373,16 +373,14 @@ class Match {
         await sleep(350);
         break;
       }
-      case 'lattice': {
+      case 'base': {
         const box = this.q(`[data-lat="${side}"]`);
         if (!box) break;
-        const from = side === 'me' ? this.q('[data-act="lattice"]') : this.q(`[data-panel="${side}"] .avatar`);
+        const from = side === 'me' ? this.q('.hand') : this.q(`[data-panel="${side}"] .avatar`);
         if (from) await this.fx.orb(from, box, '#9fe1ff');
         const c = this.fx.center(box);
         this.fx.ring(c.x, c.y, '#9fe1ff', 140);
-        this.fx.float('+1 성소<small>다음 턴부터 신앙 +1</small>', c.x, c.y - 10, 'income lat');
-        const left = box.querySelector('i');
-        if (left) left.textContent = `남은 ${this.s.players[e.p].latticePile - 1}`;
+        this.fx.float(`+1 베이스<small>다음 턴부터 ${FACTIONS[this.s.players[e.p].faction].resource} +${BALANCE.base.income}</small>`, c.x, c.y - 10, 'income lat');
         await this.fx.count(box.querySelector('b'), e.total - 1, e.total, 300);
         await sleep(250);
         break;
@@ -412,11 +410,11 @@ class Match {
       const parts = [`수입 ${gain - Math.min(interest, gain)}`, interest > 0 && gain > 0 ? `이자 ${Math.min(interest, gain)}` : ''].filter(Boolean);
       text = `${gain >= 0 ? '+' : ''}${gain} ${name}<small>${gain > 0 ? parts.join(' · ') : '최대 보유량'}</small>`;
     } else {
-      const b = BALANCE.covalent, lands = pl.elements.length * BALANCE.elements.bondPool, bonus = pl.lattices >= b.resonanceAt ? b.resonanceBonus : 0;
-      const base = pl.faction === 'covalent' ? pl.lattices + lands + bonus : next;
+      const b = BALANCE.covalent, lands = pl.faction === 'covalent' ? pl.elements.length * BALANCE.elements.bondPool : 0, bonus = pl.faction === 'covalent' && pl.bases >= b.resonanceAt ? b.resonanceBonus : 0;
+      const base = pl.bases * BALANCE.base.income + lands + bonus;
       const why = [
-        pl.faction === 'covalent' ? `성소 ${pl.lattices} + 대지 ${lands}${bonus ? ` + 공명 ${bonus}` : ''}` : '기본 영혼',
-        next > base ? `후공 +${next - base}` : '',
+        `베이스 ${pl.bases}${lands ? ` + 대지 ${lands}` : ''}${bonus ? ` + 공명 ${bonus}` : ''}`,
+        next > base ? `${pl.turns === 1 ? '첫 턴 선불/후공' : '보너스'} +${next - base}` : '',
       ].filter(Boolean).join(' · ');
       text = `${next > 0 ? `+${next} ${name}` : `${name} 0`}<small>${why}</small>`;
       if (prev > 0) this.fx.float(`남은 ${prev} 소멸`, c.x, c.y + 30, 'lost');
@@ -518,6 +516,9 @@ class Match {
     const hand = t.closest<HTMLElement>('[data-hand]');
     if (hand) {
       const uid = Number(hand.dataset.hand);
+      const base = this.legal.find((a) => a.type === 'base' && a.uid === uid);
+      if (base) return void this.act(base);
+      if (this.isBase(uid)) return this.toast(this.me().bases >= BALANCE.base.max ? '베이스는 최대 12개까지 깔 수 있습니다' : `이번 턴에는 베이스를 ${this.me().turns}장까지 깔 수 있습니다`);
       this.sel = this.sel?.k === 'hand' && this.sel.uid === uid ? null : { k: 'hand', uid };
       return this.render();
     }
@@ -526,6 +527,11 @@ class Match {
     const lane = t.closest<HTMLElement>('[data-lane]');
     if (lane) return this.onLane(Number(lane.dataset.lane), lane.dataset.side as Side | 'tile');
     if (this.sel) { this.sel = null; this.render(); }
+  }
+
+  private isBase(uid: number) {
+    const c = this.me().hand.find((x) => x.uid === uid);
+    return !!c && getCard(c.cardId).kind === 'base';
   }
 
   private onButton(act: string) {
@@ -545,7 +551,7 @@ class Match {
         return;
       case 'rematch': return this.o.onExit(true);
       case 'to-menu': return this.o.onExit(false);
-      case 'lattice': return void this.act({ type: 'lattice' });
+      case 'shuffle': return void this.act({ type: 'shuffle' });
       case 'decay-hand':
         if (sel?.k === 'hand') void this.act({ type: 'decay', from: 'hand', uid: sel.uid });
         return;
@@ -555,11 +561,6 @@ class Match {
       case 'heir':
         if (sel?.k === 'unit') { this.sel = { ...sel, heir: true }; this.render(); }
         return;
-      case 'attack-sel': {
-        const lane = sel?.k === 'unit' ? me.lanes.findIndex((u) => u?.uid === sel.uid) : -1;
-        if (lane >= 0) void this.act({ type: 'attack', lane });
-        return;
-      }
       case 'burn':
         if (sel?.k === 'el') void this.act({ type: 'decay', from: 'element', element: me.elements[sel.picked[0]] });
         return;
@@ -601,8 +602,6 @@ class Match {
         this.sel = sel?.k === 'unit' && sel.uid === u.uid ? null : { k: 'unit', uid: u.uid };
         return this.render();
       }
-      if (this.canAttack(lane)) return void this.act({ type: 'attack', lane });
-      this.toast(u.sick ? '이번 턴에 소환된 유닛은 공격할 수 없습니다' : u.atk <= 0 ? '공격력이 없는 유닛입니다' : '이미 공격했습니다');
     }
     if (sel) { this.sel = null; this.render(); }
   }
@@ -622,14 +621,10 @@ class Match {
     return this.legal.find((x) => x.type === 'react' && x.lane === lane && ((x.a === a && x.b === b) || (x.a === b && x.b === a)));
   }
 
-  private canAttack(lane: number) {
-    return this.legal.some((a) => a.type === 'attack' && a.lane === lane);
-  }
-
   // 손패 끌어다 놓기. 8px 이상 움직이면 드래그, 아니면 클릭(선택)으로 처리
   private onPointerDown(ev: PointerEvent) {
     const card = (ev.target as HTMLElement).closest<HTMLElement>('[data-hand]');
-    if (!card || !this.myTurn() || ev.button !== 0) return;
+    if (!card || !this.myTurn() || ev.button !== 0 || this.isBase(Number(card.dataset.hand))) return;
     this.drag = { uid: Number(card.dataset.hand), x0: ev.clientX, y0: ev.clientY };
     window.addEventListener('pointermove', this.onMove);
     window.addEventListener('pointerup', this.onUp, { once: true });
@@ -671,6 +666,17 @@ class Match {
   private onHover(ev: MouseEvent) {
     const box = this.q('.preview');
     if (!box) return;
+    const handEl = (ev.target as HTMLElement).closest<HTMLElement>('[data-hand]');
+    if (handEl && !this.drag) {
+      const c = this.me().hand.find((x) => x.uid === Number(handEl.dataset.hand));
+      if (c) {
+        box.innerHTML = cardHTML(getCard(c.cardId), { cls: 'big' });
+        box.style.left = `${STAGE_W - 250}px`;
+        box.style.top = '250px';
+        box.classList.add('show');
+        return;
+      }
+    }
     const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-preview]');
     if (!el || this.drag) { box.classList.remove('show'); return; }
     const def = getCard(el.dataset.preview!);
@@ -687,7 +693,7 @@ class Match {
   private unitStatus(u: Unit, def: CardDef) {
     const rows = [
       `현재 ${u.atk} / ${u.hp}`,
-      u.sick ? '이번 턴 소환됨 (공격 불가)' : u.attacked ? '이번 턴 공격함' : '',
+      u.sick ? '이번 턴 소환됨 (공격 불가)' : u.attacked ? '이번 턴 공격함' : u.atk > 0 ? '턴 종료 시 자동 공격' : '',
       u.halfLife !== undefined ? `소멸까지 ${u.halfLife}턴` : '',
       u.energy !== undefined ? `기력 ${u.energy}` : '',
       u.equipped?.length ? `장착: ${u.equipped.map((id) => getCard(id).name).join(', ')}` : '',
@@ -719,10 +725,11 @@ class Match {
       case 'turnStart': return `── ${who}의 턴 (자원 ${e.pool})`;
       case 'draw': return e.p === this.h ? `드로우: ${n(e.cardId)}` : '상대가 카드를 뽑음';
       case 'play': return `${who}: ${n(e.cardId)} → ${e.lane + 1}번 레인`;
-      case 'lattice': return `${who}: 성소 건립 (총 ${e.total})`;
-      case 'attack': return `${who}: ${e.lane + 1}번 레인 공격 → ${e.target === 'unit' ? '유닛' : '파멸'} (${e.dmg})`;
+      case 'base': return `${who}: 베이스 설치 (총 ${e.total})`;
+      case 'attack': return `${who}: ${e.lane + 1}번 레인 공격 → ${e.target === 'unit' ? `${e.at + 1}번 레인 유닛` : '파멸'} (${e.dmg})`;
       case 'counter': return `${who}: 버텨내고 반격 (${e.dmg})`;
       case 'death': return `${who}의 ${n(e.cardId)} 파괴 (${REASON[e.reason]})`;
+      case 'shuffle': return `${who}: 손패 ${e.n}장을 덱에 섞고 다시 뽑음`;
       case 'decay': return `${who}: ${n(e.cardId)} 제물 → 영혼 +${e.gain}`;
       case 'inherit': return `${who}: ${n(e.cardId)}의 혼이 빙의 (${e.lane + 1}번 레인)`;
       case 'charge': return `${who}의 ${n(e.cardId)} 충전 발동`;
@@ -730,6 +737,8 @@ class Match {
       case 'react': return `${who}: ${e.elements.map((k) => getLand(k).name).join(' + ')} 융합 주문 → ${e.lane + 1}번 레인 ${e.dmg} 피해`;
       case 'burn': return `${who}: ${getLand(e.element).name} 제물 → 영혼 +${e.gain}`;
       case 'transmute': return `${who}: ${getLand(e.from).name} → ${getLand(e.to).name} 타락`;
+      case 'spire': return `${who}: 첨탑 ${e.floors}층`;
+      case 'bombard': return `${who}: 첨탑 잔불 포격 → ${e.lane + 1}번 레인 ${e.dmg} 피해`;
       case 'entropy': return `${who} 파멸 +${e.amount} (${CAUSE[e.cause]}) → ${e.total}`;
       case 'win': return `${who} 승리`;
     }
@@ -747,7 +756,7 @@ class Match {
       ${this.slot('foe', foe, i, marks)}${this.tile(i)}${this.slot('me', me, i, marks)}</div>`).join('');
     const ley = s.leyline;
     const onlyEnd = mine && this.legal.length === 1;
-    const idle = mine && me.cardsUsedThisTurn === 0 && this.legal.some((a) => a.type === 'play' || (a.type === 'decay' && a.from === 'hand'));
+    const idle = mine && me.cardsUsedThisTurn === 0 && this.legal.some((a) => a.type === 'play' || a.type === 'base' || (a.type === 'decay' && a.from === 'hand'));
     this.view.innerHTML = `
       <div class="tb-left"><button class="btn ghost" data-act="menu">☰ 나가기</button><button class="btn ghost" data-act="surrender" ${this.ended ? 'disabled' : ''}>🏳 항복</button></div>
       <div class="tb-right">${this.o.admin ? `<button class="btn ghost ${this.reveal ? 'on' : ''}" data-act="reveal" title="관리자 권한">👁 상대 손패</button>` : ''}<button class="btn ghost" data-act="log">📜 기록</button></div>
@@ -758,8 +767,9 @@ class Match {
       <div class="board ${s.active === this.h ? 'my-turn' : 'foe-turn'}">${lanes}</div>
       ${this.pile('foe', foe)}${this.pile('me', me)}
       <div class="turn-pill ${s.active === this.h ? 'me' : 'foe'}">턴 ${this.turnNo}<b>${s.active === this.h ? '내 턴' : '상대 턴'}</b></div>
-      <button class="end-turn ${idle ? 'idle' : onlyEnd ? 'glow' : ''}" data-act="end" ${mine ? '' : 'disabled'} title="${idle ? '낼 수 있는 카드를 한 장도 쓰지 않으면 파멸이 오릅니다' : ''}">${mine ? '턴 종료' : s.active === this.h ? '…' : '상대 턴'}${idle ? `<small>방치: 파멸 +${BALANCE.hand.idleEntropy}</small>` : ''}</button>
+      <button class="end-turn ${idle ? 'idle' : onlyEnd ? 'glow' : ''}" data-act="end" ${mine ? '' : 'disabled'}>${mine ? '턴 종료' : s.active === this.h ? '…' : '상대 턴'}</button>
       <div class="hint">${this.hint()}</div>
+      <button class="btn small shuffle" data-act="shuffle" ${mine && !me.shuffledThisTurn && me.hand.length ? '' : 'disabled'} title="손패 전부를 덱에 섞고 같은 장수를 다시 뽑습니다. 턴당 1번, 내 파멸 +${BALANCE.hand.shuffleEntropy}">🔀 손패 셔플 <small>파멸 +${BALANCE.hand.shuffleEntropy}</small></button>
       <div class="me-hand hand">${this.handHTML(me)}</div>
       <div class="preview"></div>
       <div class="log ${this.logOpen ? 'open' : ''}"><h4>전투 기록</h4><ol>${this.logLines.slice(-150).map((l) => `<li class="${l.startsWith('──') ? 'turn' : ''}">${esc(l)}</li>`).join('')}</ol></div>`;
@@ -783,6 +793,14 @@ class Match {
     return t;
   }
 
+  private spireTip(pl: PlayerState) {
+    const sp = BALANCE.union.spire;
+    return `첨탑 ${pl.spire}층 (최대 ${sp.max})
+주문 +${sp.perSpell}층 (폭주 +${sp.perSpell + sp.overloadBonus}층), 융합 주문 +${sp.perReact}층. 내려가지 않습니다
+턴 시작마다 공격력이 가장 높은 적 유닛에게 ${Math.floor(pl.spire / sp.bombardPer)} 피해 (${sp.bombardPer}층당 1)
+전승 기본 상한 +${Math.floor(pl.spire / sp.techPer)} (${sp.techPer}층당 1)`;
+  }
+
   private panel(side: Side, pl: PlayerState) {
     const f = FACTIONS[pl.faction], max = BALANCE.maxEntropy;
     const cap = levelCap(pl);
@@ -792,7 +810,6 @@ class Match {
       const d = getLand(e);
       return `<button class="chip a-${d.aspect} ${picked.includes(i) ? 'on' : ''}" style="--gc:${groupColor(d.race)}" data-el="${i}" ${clickable ? '' : 'disabled'} title="${d.name} · ${d.race} · ${d.tier}등급 · ${ASPECT_LABEL[d.aspect]}${d.corruptsTo ? ` · 타락 → ${getLand(d.corruptsTo).name}` : ''}">${d.name}</button>`;
     }).join('');
-    const canLattice = this.legal.some((a) => a.type === 'lattice');
     const active = this.s.active === (side === 'me' ? this.h : 1 - this.h);
     return `<div class="panel ${side} f-${pl.faction} ${active ? 'active' : ''}" data-panel="${side}">
       <div class="p-head"><div class="avatar">${ICON[pl.faction]}</div>
@@ -801,28 +818,28 @@ class Match {
         <div class="m-fill" style="width:${(pl.entropy / max) * 100}%"></div><span class="m-txt">파멸 <b>${pl.entropy}</b> / ${max}</span></div>
       <div class="p-stats">
         <div class="res" data-res="${side}" data-tip="${esc(this.resTip(pl))}"><small>${f.resource}</small><b>${pl.pool}</b></div>
-        ${pl.faction === 'covalent' ? `<div class="res lat" data-lat="${side}" data-tip="${esc(`성소 ${pl.lattices}개 세움 · 남은 ${pl.latticePile}개\n성소 하나당 매 턴 시작에 신앙 +1\n턴마다 1개 건립 (다음 턴부터 신앙에 반영)`)}"><small>성소</small><b>${pl.lattices}</b><i>남은 ${pl.latticePile}</i></div>` : ''}
+        <div class="res lat" data-lat="${side}" data-tip="${esc(`베이스 ${pl.bases}개 (최대 ${BALANCE.base.max})\n베이스 하나당 매 턴 시작에 ${f.resource} +${BALANCE.base.income}\n손패의 베이스 카드를 한 턴에 내 턴 번호만큼(1턴 1장, 2턴 2장…) 깔 수 있습니다 (다음 턴부터 반영)\n제물로 바칠 수 없습니다`)}"><small>베이스</small><b>${pl.bases}</b><i>최대 ${BALANCE.base.max}</i></div>
+        ${pl.faction === 'union' ? `<div class="res lat" data-tip="${esc(this.spireTip(pl))}"><small>첨탑</small><b>${pl.spire}</b><i>최대 ${BALANCE.union.spire.max}</i></div>` : ''}
         <div class="res tech" title="낼 수 있는 카드 레벨 상한"><small>전승</small><b>${pl.tech || '-'}</b><i>${Number.isFinite(cap) ? `Lv ${cap}까지` : '제한 없음'}</i></div>
       </div>
       <div class="tray" data-tray="${side}">${chips || '<span class="dim">점령한 대지 없음</span>'}</div>
-      ${side === 'me' && pl.faction === 'covalent' ? `<button class="btn lattice" data-act="lattice" ${canLattice ? '' : 'disabled'}>✠ 성소 건립 <small>(남은 ${pl.latticePile})</small></button>` : ''}
     </div>`;
   }
 
   // 자원 칸 설명 (마우스를 올리면 보인다). 수치는 resources.ts 규칙과 같다
   private resTip(pl: PlayerState): string {
+    const inc = BALANCE.base.income, first = pl.turns <= 1 ? `\n첫 턴에는 선불로 ${BALANCE.base.borrow}을(를) 당겨 쓸 수 있고, 쓰면 다음 턴 시작에 파멸 +${BALANCE.base.borrowEntropy}` : '';
     if (pl.faction === 'union') {
       const b = BALANCE.union;
-      const income = Math.min(b.incomeBase + Math.floor((pl.turns + 1) / b.incomeEvery), b.incomeMax);
       const interest = Math.min(Math.floor(pl.pool / b.interestPer), b.interestMax);
-      return `금화 — 쓰고 남은 금화는 다음 턴으로 이월됩니다\n턴 시작 수입 +${income} (${b.incomeEvery}턴마다 +1, 최대 ${b.incomeMax})\n이자: 남은 금화 ${b.interestPer}당 +1 (최대 ${b.interestMax}) → 지금 +${interest}\n최대 보유 ${b.goldCap}`;
+      return `금화 — 쓰고 남은 금화는 다음 턴으로 이월됩니다\n턴 시작 수입 = 베이스 ${pl.bases} × ${inc}\n이자: 남은 금화 ${b.interestPer}당 +1 (최대 ${b.interestMax}) → 지금 +${interest}\n최대 보유 ${b.goldCap}${first}`;
     }
     if (pl.faction === 'covalent') {
       const b = BALANCE.covalent, lands = pl.elements.length * BALANCE.elements.bondPool;
-      return `신앙 = 성소 수 + 점령한 대지 수\n지금: 성소 ${pl.lattices} + 대지 ${lands}${pl.lattices >= b.resonanceAt ? ` + 공명 ${b.resonanceBonus}` : ''} (성소 ${b.resonanceAt}개 이상이면 +${b.resonanceBonus})\n매 턴 시작에 다시 채워지며, 남은 신앙은 이월되지 않습니다`;
+      const bond = BALANCE.elements.bondPool > 0;
+      return `신앙 = 베이스 수${bond ? ' + 점령한 대지 수' : ''}\n지금: 베이스 ${pl.bases}${bond ? ` + 대지 ${lands}` : ''}${pl.bases >= b.resonanceAt ? ` + 공명 ${b.resonanceBonus}` : ''} (베이스 ${b.resonanceAt}개 이상이면 +${b.resonanceBonus})\n매 턴 시작에 다시 채워지며, 남은 신앙은 이월되지 않습니다${first}`;
     }
-    const d = BALANCE.decay;
-    return `영혼 = 기본 영혼 + 이번 턴 제물\n기본 ${d.baseStart}, ${d.baseEvery}턴마다 +1\n손패·유닛·대지를 제물로 바치면 영혼을 얻습니다\n매 턴 시작에 기본값으로 돌아가며, 남은 영혼은 이월되지 않습니다`;
+    return `영혼 = 베이스 수 + 이번 턴 제물\n지금: 베이스 ${pl.bases} × ${inc}\n손패·유닛·대지를 제물로 바치면 영혼을 얻습니다 (베이스는 제물 불가)\n매 턴 시작에 베이스 수로 돌아가며, 남은 영혼은 이월되지 않습니다${first}`;
   }
 
   private slot(side: Side, pl: PlayerState, lane: number, marks: Set<string>) {
@@ -845,7 +862,7 @@ class Match {
     const stat = (cls: string, n: number, label: string) => `<div class="s ${cls}"><b>${n}</b><small>${label}</small></div>`;
     const sel = this.sel;
     const cls = [
-      side === 'me' && this.canAttack(lane) ? 'ready' : '',
+      side === 'me' && canAttack(u) ? 'ready' : '',
       u.sick ? 'sick' : '',
       sel?.k === 'unit' && sel.uid === u.uid ? 'selected' : '',
     ].join(' ');
@@ -903,7 +920,7 @@ class Match {
       const mid = (n - 1) / 2, off = i - mid;
       const x = W / 2 - CW / 2 + off * gap, y = 8 + off * off * 2.2;
       const locked = isLocked(me, def);
-      const playable = this.legal.some((a) => a.type === 'play' && a.uid === c.uid);
+      const playable = this.legal.some((a) => (a.type === 'play' || a.type === 'base') && a.uid === c.uid);
       const syn = this.synergy(me, def);
       const resonant = syn.discount > 0 || syn.buff > 0;
       const cls = ['hcard', playable ? 'playable' : '', locked ? 'locked' : '', resonant ? 'res' : ''].join(' ');
@@ -971,9 +988,8 @@ class Match {
       if (sel.heir) return `<span>혼이 빙의할 내 다른 유닛을 고르세요</span>${cancel}`;
       const others = me.lanes.some((x) => x && x.uid !== u.uid);
       return `<b>${esc(def.name)}</b>
-        ${this.canAttack(lane) ? '<button class="btn small primary" data-act="attack-sel">⚔ 공격</button>' : ''}
-        <button class="btn small decay" data-act="decay-board">☾ 제물 (+${decayGain.board(def.level)} 영혼)</button>
-        ${others ? '<button class="btn small decay" data-act="heir">☾ 빙의 제물</button>' : ''}${cancel}`;
+        ${canAttack(u) ? '<span>턴을 끝내면 자동으로 공격합니다 (공격할 유닛은 제물로 바칠 수 없음)</span>' : `<button class="btn small decay" data-act="decay-board">☾ 제물 (+${decayGain.board(def.level)} 영혼)</button>
+        ${others ? '<button class="btn small decay" data-act="heir">☾ 빙의 제물</button>' : ''}`}${cancel}`;
     }
     if (sel?.k === 'el') {
       if (me.faction === 'decay') return `<b>${getLand(me.elements[sel.picked[0]]).name}</b><button class="btn small decay" data-act="burn">☾ 대지 제물 (+${BALANCE.elements.burnGain} 영혼)</button>${cancel}`;
@@ -983,6 +999,6 @@ class Match {
       return `<span>융합 주문을 쓸 레인을 고르세요 (금화 ${r.cost} · 피해 ${r.damage}, 빛+그림자면 +${r.ionBonus})</span>${cancel}`;
     }
     if (this.legal.length === 1) return '<span>할 수 있는 행동이 없습니다. 턴을 종료하세요.</span>';
-    return `<span class="dim">카드를 끌어다 놓거나 클릭해서 내세요 · 빛나는 유닛을 클릭하면 공격${me.faction === 'decay' ? ' · 유닛·대지를 클릭하면 제물' : me.faction === 'union' ? ' · 대지 2곳을 골라 융합 주문' : ''}</span>`;
+    return `<span class="dim">카드를 끌어다 놓거나 클릭해서 내세요 (베이스는 클릭) · 공격할 수 있는 유닛은 턴 종료 때 자동 공격${me.faction === 'decay' ? ' · 유닛·대지를 클릭하면 제물' : me.faction === 'union' ? ' · 대지 2곳을 골라 융합 주문' : ''}</span>`;
   }
 }

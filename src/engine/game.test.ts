@@ -40,6 +40,36 @@ describe('hand', () => {
     expect(s.players[0].hand.length).toBe(BALANCE.hand.max);
   });
 
+  it('shuffle redraws the same number of cards for an entropy penalty, once per turn', () => {
+    let s = createGame(DECKS.union, DECKS.union, 1);
+    const n = s.players[0].hand.length, total = n + s.players[0].deck.length, e = s.players[0].entropy;
+    s = applyAction(s, { type: 'shuffle' });
+    expect(s.players[0].hand.length).toBe(n);
+    expect(s.players[0].hand.length + s.players[0].deck.length).toBe(total);
+    expect(s.players[0].entropy).toBe(e + BALANCE.hand.shuffleEntropy);
+    expect(legalActions(s).some((x) => x.type === 'shuffle')).toBe(false);
+  });
+
+  it('units attack automatically at end of turn, hitting the nearest enemy before the empty lane', () => {
+    let s = createGame(DECKS.union, DECKS.union, 1);
+    const unit = (uid: number, atk: number, hp: number, sick = false) => ({ uid, cardId: 'ember_scout', atk, hp, sick, attacked: false });
+    s.players[0].lanes[0] = unit(901, 1, 9);
+    s.players[1].lanes[2] = unit(902, 1, 9);
+    const e = s.players[1].entropy;
+    s = applyAction(s, { type: 'endTurn' });
+    expect(s.players[1].lanes[2]!.hp).toBe(8);
+    expect(s.players[1].entropy).toBe(e + BALANCE.naturalEntropy); // 직접 공격 없음, 자연 증가만
+    expect(s.players[0].lanes[0]!.attacked).toBe(true);
+  });
+
+  it('a unit that will attack cannot be sacrificed', () => {
+    const s = createGame(DECKS.decay, DECKS.union, 1);
+    s.players[0].lanes[0] = { uid: 903, cardId: 'ember_scout', atk: 1, hp: 1, sick: false, attacked: false };
+    s.players[0].lanes[1] = { uid: 904, cardId: 'ember_scout', atk: 1, hp: 1, sick: true, attacked: false };
+    expect(() => applyAction(s, { type: 'decay', from: 'board', uid: 903 })).toThrow();
+    expect(() => applyAction(s, { type: 'decay', from: 'board', uid: 904 })).not.toThrow();
+  });
+
   it('ending a turn without using a playable card raises own entropy', () => {
     let s = createGame(DECKS.union, DECKS.union, 1);
     s.players[0].pool = 1;
@@ -60,40 +90,100 @@ describe('setup', () => {
     const s = createGame(DECKS.union, DECKS.covalent, 7);
     expect(s.players[0].hand).toHaveLength(BALANCE.union.startHand[0]);
     expect(s.players[1].hand).toHaveLength(BALANCE.covalent.startHand[1]);
-    expect(s.players[0].pool).toBe(BALANCE.union.incomeBase);
-    expect(s.players[1].lattices).toBe(BALANCE.covalent.startLattices);
+    expect(s.players[0].pool).toBe(BALANCE.base.borrow); // 첫 턴 선불
+    expect(s.players[1].bases).toBe(0);
   });
 });
+
+const giveBases = (s: GameState, p: 0 | 1, n: number) => { s.players[p].bases = n; };
 
 describe('union gold', () => {
-  it('carries over and earns interest', () => {
+  it('income = bases, carries over and earns interest', () => {
     let s = createGame(DECKS.union, DECKS.covalent, 1);
+    giveBases(s, 0, 3);
     const pools: number[] = [];
-    for (let i = 0; i < 4; i++) {
-      pools.push(s.players[0].pool);
+    for (let i = 0; i < 3; i++) {
       s = endTurn(endTurn(s));
+      pools.push(s.players[0].pool);
     }
-    // 수입 2,2,3,3 / 이자: 4금화당 +1 / 상한 10
-    expect(pools).toEqual([2, 4, 8, 10]);
+    // 첫 턴 선불 1 남음 → 1+3=4 → 4+3+이자1=8 → 8+3+이자2=13 → 상한 12
+    expect(pools).toEqual([4, 8, 12]);
   });
 });
 
-describe('covalent lattice', () => {
-  it('one lattice per turn from separate pile, pool resets to lattice count', () => {
-    let s = createGame(DECKS.covalent, DECKS.union, 1);
-    s = applyAction(s, { type: 'lattice' });
-    expect(() => applyAction(s, { type: 'lattice' })).toThrow();
-    expect(s.players[0].latticePile).toBe(BALANCE.covalent.pileSize - 1);
-    s = endTurn(endTurn(s));
-    expect(s.players[0].pool).toBe(BALANCE.covalent.startLattices + 1);
+describe('bases', () => {
+  const deckWith = (n: number) => createGame({ faction: 'covalent', cards: [...DECKS.covalent.cards.filter((id) => id !== 'base_covalent').slice(0, 24), ...Array(n).fill('base_covalent')] }, DECKS.union, 1).players[0];
+
+  it('are mixed into the deck, count is chosen per deck', () => {
+    const count = (n: number) => { const p = deckWith(n); return [...p.deck, ...p.hand].filter((c) => c.cardId === 'base_covalent').length; };
+    expect(count(0)).toBe(0);
+    expect(count(5)).toBe(5);
+    expect(count(16)).toBe(16);
   });
 
-  it('resonance bonus at threshold', () => {
+  it('as many per turn as the turn number, resource each turn start, pool resets to base count', () => {
+    let s = createGame(DECKS.covalent, DECKS.union, 1);
+    const [a, b, c] = giveHand(s, 0, ['base_covalent', 'base_covalent', 'base_covalent']);
+    s = applyAction(s, { type: 'base', uid: a });
+    expect(() => applyAction(s, { type: 'base', uid: b })).toThrow(); // 첫 턴은 1장
+    expect(s.players[0].bases).toBe(1);
+    s = endTurn(endTurn(s));
+    expect(s.players[0].pool).toBe(BALANCE.base.income);
+  });
+
+  it('cannot exceed the board limit', () => {
+    const s = createGame(DECKS.covalent, DECKS.union, 1);
+    const [a] = giveHand(s, 0, ['base_covalent']);
+    s.players[0].bases = BALANCE.base.max;
+    expect(() => applyAction(s, { type: 'base', uid: a })).toThrow();
+    expect(legalActions(s).some((x) => x.type === 'base')).toBe(false);
+  });
+
+  it('cannot be sacrificed, even by the decay faction', () => {
+    const s = createGame(DECKS.decay, DECKS.union, 1);
+    const [a] = giveHand(s, 0, ['base_decay']);
+    expect(() => applyAction(s, { type: 'decay', from: 'hand', uid: a })).toThrow();
+    expect(legalActions(s).some((x) => x.type === 'decay')).toBe(false);
+  });
+
+  it('first-turn loan: using it costs entropy next turn, not using it does not', () => {
+    const used = createGame(DECKS.union, DECKS.union, 1);
+    const [a] = giveHand(used, 0, ['ember_scout']);
+    let s = applyAction(used, { type: 'play', uid: a, lane: 0 }); // 비용 1 = 선불 전부
+    const e = s.players[0].entropy;
+    s = endTurn(endTurn(s));
+    expect(s.players[0].entropy).toBe(e + BALANCE.naturalEntropy + BALANCE.base.borrowEntropy);
+
+    const idle = createGame(DECKS.union, DECKS.union, 1);
+    giveHand(idle, 0, ['base_union']);
+    const [b] = idle.players[0].hand.map((c) => c.uid);
+    s = applyAction(idle, { type: 'base', uid: b });
+    const e2 = s.players[0].entropy;
+    s = endTurn(endTurn(s));
+    expect(s.players[0].entropy).toBe(e2 + BALANCE.naturalEntropy);
+  });
+
+  it('covalent binds units to captured elements (lands × bind, rounded down)', () => {
+    const base = getCard('abbey_wall');
+    // 수도사가 아닌 대지만 써서 종족 공명이 섞이지 않게 한다
+    for (const elements of [['obsidian_pit'], ['obsidian_pit', 'mist_wood']]) {
+      const s = createGame(DECKS.covalent, DECKS.union, 1);
+      s.players[0].pool = 9;
+      s.players[0].elements = elements;
+      const [a] = giveHand(s, 0, ['abbey_wall']);
+      const u = applyAction(s, { type: 'play', uid: a, lane: 0 }).players[0].lanes[0]!;
+      expect(u.atk).toBe(base.atk + Math.floor(elements.length * BALANCE.covalent.bind));
+    }
+  });
+});
+
+describe('covalent resonance', () => {
+  it('bonus faith at the base threshold', () => {
     let s = createGame(DECKS.covalent, DECKS.union, 1);
     const { resonanceAt, resonanceBonus } = BALANCE.covalent;
-    s.players[0].lattices = resonanceAt;
+    s.players[0].bases = resonanceAt;
     s = endTurn(endTurn(s));
-    expect(s.players[0].pool).toBe(resonanceAt + resonanceBonus);
+    expect(s.players[0].pool).toBe(resonanceAt * BALANCE.base.income + resonanceBonus);
   });
 });
 
@@ -153,11 +243,13 @@ describe('deck building (객원)', () => {
 
   it('rejects wrong size, too many copies, too many guests and guest spells/items', () => {
     const base = DECKS.covalent.cards;
-    expect(validateDeck({ faction: 'covalent', cards: base.slice(1) })).toHaveLength(1);
+    expect(validateDeck({ faction: 'covalent', cards: base.slice(0, 10) })).toHaveLength(1);
+    expect(validateDeck({ faction: 'covalent', cards: [...base, ...Array(2).fill('base_covalent')] })).toHaveLength(1); // 41장
     const copies = [...base.slice(0, 20), ...Array(4).fill('abbey_wall')];
+    expect(validateDeck({ faction: 'covalent', cards: [...base.slice(0, 20), ...Array(20).fill('base_covalent')] })).toEqual([]); // 베이스는 장수 제한 없음
     expect(validateDeck({ faction: 'covalent', cards: copies }).some((e) => e.includes('같은 카드'))).toBe(true);
     const extra = ['ash_raider', 'ash_raider', 'ash_raider', 'spark_archer', 'spark_archer', 'spark_archer', 'gale_blade'].slice(0, BALANCE.deck.guestMax + 1);
-    const guests = [...base.slice(0, BALANCE.deck.size - extra.length), ...extra];
+    const guests = [...base.slice(0, 30 - extra.length), ...extra];
     expect(validateDeck({ faction: 'covalent', cards: guests }).some((e) => e.includes('객원 카드는'))).toBe(true);
     const spell = [...base.slice(0, 23), 'sp_fireball'];
     expect(validateDeck({ faction: 'covalent', cards: spell }).some((e) => e.includes('종류'))).toBe(true);
@@ -251,21 +343,22 @@ describe('decay faction', () => {
 describe('upkeep', () => {
   it('is paid from the pool at turn start, and a unit that cannot be paid is destroyed', () => {
     const card = getCard('ember_scout');
-    card.upkeep = 3;
+    card.upkeep = 4;
     try {
       const base = createGame(DECKS.union, DECKS.covalent, 1);
       const withUnit = (pool: number) => {
         const s = structuredClone(base);
         s.players[0].lanes[0] = { uid: 999, cardId: 'ember_scout', atk: 1, hp: 1, sick: false, attacked: false };
         s.players[0].pool = pool;
+        s.players[0].bases = 3;
         return endTurn(endTurn(s)).players[0];
       };
-      const paid = withUnit(4); // 4 + 수입 2 + 이자 1 - 유지비 3
+      const paid = withUnit(4); // 4 + 베이스 수입 3 + 이자 1 - 유지비 4
       expect(paid.lanes[0]).not.toBeNull();
       expect(paid.pool).toBe(4);
-      const broke = withUnit(0); // 수입 2로는 유지비 3을 못 냄 → 파괴, 자원은 그대로
+      const broke = withUnit(0); // 수입 3으로는 유지비 4를 못 냄 → 파괴, 자원은 그대로
       expect(broke.lanes[0]).toBeNull();
-      expect(broke.pool).toBe(2);
+      expect(broke.pool).toBe(3);
     } finally {
       delete card.upkeep;
     }
@@ -306,6 +399,55 @@ describe('faction card kinds', () => {
     t.players[0].pool = 10;
     const [rx2] = giveHand(t, 0, ['sp_fireball']);
     expect(() => applyAction(t, { type: 'play', uid: rx2, lane: 0 })).toThrow();
+  });
+});
+
+describe('spire (첨탑)', () => {
+  const sp = BALANCE.union.spire;
+
+  it('spells raise the spire (overload adds more), react raises it more, capped at max', () => {
+    let s = createGame(DECKS.union, DECKS.covalent, 1);
+    s.players[0].pool = 20;
+    const [a, b] = giveHand(s, 0, ['sp_insight', 'sp_insight']);
+    s = applyAction(s, { type: 'play', uid: a, lane: 0 });
+    expect(s.players[0].spire).toBe(sp.perSpell);
+    s = applyAction(s, { type: 'play', uid: b, lane: 0, overload: true });
+    expect(s.players[0].spire).toBe(2 * sp.perSpell + sp.overloadBonus);
+    s.players[0].elements.push('salt_flame', 'storm_cliff');
+    s = applyAction(s, { type: 'react', lane: 0, a: 'salt_flame', b: 'storm_cliff' });
+    expect(s.players[0].spire).toBe(Math.min(sp.max, 2 * sp.perSpell + sp.overloadBonus + sp.perReact));
+    s.players[0].spire = sp.max;
+    const [c] = giveHand(s, 0, ['sp_insight']);
+    expect(applyAction(s, { type: 'play', uid: c, lane: 0 }).players[0].spire).toBe(sp.max);
+  });
+
+  it('units do not raise the spire, and other factions have none', () => {
+    let s = createGame(DECKS.union, DECKS.covalent, 1);
+    s.players[0].pool = 20;
+    const [a] = giveHand(s, 0, ['ember_scout']);
+    s = applyAction(s, { type: 'play', uid: a, lane: 0 });
+    expect(s.players[0].spire).toBe(0);
+  });
+
+  it('bombards the highest-attack enemy unit at turn start, resist applies', () => {
+    let s = createGame(DECKS.union, DECKS.covalent, 1);
+    s.players[0].spire = 4 * sp.bombardPer; // 4 피해
+    s.players[1].lanes[0] = { uid: 990, cardId: 'abbey_wall', atk: 0, hp: 9, sick: false, attacked: false };
+    s.players[1].lanes[3] = { uid: 991, cardId: 'wood_spear', atk: 3, hp: 9, sick: false, attacked: false };
+    s = endTurn(endTurn(s));
+    expect(s.players[1].lanes[3]!.hp).toBe(9 - 4);
+    expect(s.players[1].lanes[0]!.hp).toBe(9);
+  });
+
+  it('raises the base level cap by floor(floors / techPer)', () => {
+    let s = createGame(DECKS.union, DECKS.covalent, 1);
+    s.leyline = null;
+    s.players[0].pool = 20;
+    const [ba] = giveHand(s, 0, ['giant_captain']); // L7
+    s.players[0].spire = (7 - BALANCE.elements.tech.baseLevel.union) * sp.techPer - 1;
+    expect(() => applyAction(s, { type: 'play', uid: ba, lane: 0 })).toThrow('locked');
+    s.players[0].spire++;
+    expect(applyAction(s, { type: 'play', uid: ba, lane: 0 }).players[0].lanes[0]?.cardId).toBe('giant_captain');
   });
 });
 
@@ -452,7 +594,7 @@ describe('faction element use', () => {
 
   it('covalent bonds elements: each owned element adds pool at turn start', () => {
     let s = createGame(DECKS.covalent, DECKS.union, 1);
-    s.players[0].lattices = 2;
+    s.players[0].bases = 2;
     s.players[0].elements = ['obsidian_pit', 'steel_bastion'];
     s = endTurn(endTurn(s));
     expect(s.players[0].pool).toBe(2 + 2 * BALANCE.elements.bondPool);
@@ -482,6 +624,7 @@ describe('covalent element capture', () => {
     const tile = s.tiles[0]!;
     s = endTurn(endTurn(s));
     s = endTurn(s);
+    s.players[0].hand.splice(0, 2); // 손패가 가득 차면 드로우하지 않으므로 자리를 비운다
     const hand = s.players[0].hand.length;
     s = endTurn(s);
     expect(s.players[0].elements).toEqual([tile]);

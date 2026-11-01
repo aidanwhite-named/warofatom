@@ -1,3 +1,4 @@
+import { BALANCE } from '../engine/config';
 import type { DeckSpec } from '../engine/game';
 import type { Faction } from '../engine/types';
 import { FACTION_RACES } from './factions';
@@ -33,6 +34,10 @@ export const DECKS: Record<Faction, DeckSpec> = {
     ],
   },
 };
+
+// 프리셋 덱에는 베이스 카드를 BALANCE.base.presetCount장씩 넣는다. 플레이어가 만든 덱은 베이스 장수를 자유롭게 정한다
+const withBases = (spec: DeckSpec) => { spec.cards.push(...x(BALANCE.base.presetCount, `base_${spec.faction}`)); };
+for (const spec of Object.values(DECKS)) withBases(spec);
 
 // 프리셋 덱 목록. 세력을 고른 뒤 주력 종족(races)으로 덱을 고른다 (docs/rules.md 3-1절)
 //   races: 덱의 중심 종족 (그 종족 대지를 점령하면 공명이 몰린다). 기본 덱은 네 종족 혼합
@@ -100,13 +105,17 @@ export const RACE_DECKS: PresetDeck[] = [
     spec: {
       faction: 'decay',
       cards: [
-        ...x(2, 'beacon_wisp'), ...x(2, 'drifting_shade'), ...x(2, 'star_acolyte'), ...x(2, 'bone_seer'),
+        ...x(2, 'beacon_wisp'), ...x(1, 'drifting_shade'), ...x(2, 'star_acolyte'), ...x(2, 'bone_seer'),
         ...x(2, 'soul_lantern'), ...x(2, 'grave_herald'), ...x(1, 'doom_reaper'), ...x(1, 'grave_veil'), ...x(2, 'well_oracle'), ...x(2, 'bog_wraith'),
-        ...x(1, 'pale_ghost'), ...x(2, 'curse_weaver'), ...x(1, 'rune_warden'), ...x(1, 'moon_oracle'), ...x(1, 'fate_hunter'),
+        ...x(1, 'pale_ghost'), ...x(1, 'curse_weaver'), ...x(1, 'rune_warden'), ...x(1, 'moon_oracle'), ...x(1, 'fate_hunter'),
+        // 점술사·망령엔 L6 이상이 없어 소멸 대형 유닛을 내는 교단 덱에 밀린다 → 다른 종족 마무리 2장
+        ...x(1, 'tomb_martyr'), ...x(1, 'void_titan'),
       ],
     },
   },
 ];
+
+for (const d of RACE_DECKS) withBases(d.spec);
 
 // 객원 덱 예시: 기본 덱에서 4장을 다른 세력 유닛으로 바꿨다. 남의 색 아이콘만큼 비싸지므로 빈 아이콘(유지비)이 많은 카드를 고른다
 export const GUEST_DECKS: PresetDeck[] = [
@@ -114,21 +123,21 @@ export const GUEST_DECKS: PresetDeck[] = [
     key: 'union_guard', name: '마탑 + 망령·골렘 방패', races: ['화염술사', '용병', '폭풍술사', '연금술사'],
     spec: {
       faction: 'union',
-      cards: DECKS.union.cards.filter((id) => id !== 'sulfur_brute' && id !== 'flame_runner').concat(x(2, 'pale_ghost'), x(2, 'ruin_bulwark')),
+      cards: DECKS.union.cards.filter((id) => id !== 'sulfur_brute' && id !== 'smoke_igniter').concat(x(2, 'pale_ghost'), x(2, 'ruin_bulwark')),
     },
   },
   {
     key: 'covalent_vanguard', name: '기사단 + 용병 고용', races: ['골렘', '숲지기', '성기사', '수도사'],
     spec: {
       faction: 'covalent',
-      cards: DECKS.covalent.cards.filter((id) => id !== 'wood_spear' && id !== 'iron_warden').concat(x(2, 'pale_ghost'), x(2, 'blight_miner')),
+      cards: DECKS.covalent.cards.filter((id) => id !== 'bastion_colossus' && id !== 'iron_warden').concat(x(2, 'pale_ghost'), x(2, 'blight_miner')),
     },
   },
   {
     key: 'decay_wall', name: '교단 + 골렘 방벽', races: ['점술사', '광신도', '심연체', '망령'],
     spec: {
       faction: 'decay',
-      cards: DECKS.decay.cards.filter((id) => id !== 'bone_seer' && id !== 'soul_lantern').concat(x(2, 'ruin_bulwark'), x(2, 'oath_lancer')),
+      cards: DECKS.decay.cards.filter((id) => id !== 'bone_seer' && id !== 'soul_lantern').concat(x(2, 'ruin_bulwark'), x(2, 'iron_warden')),
     },
   },
 ];

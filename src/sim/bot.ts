@@ -1,9 +1,10 @@
 import { getCard } from '../data/cards';
 import { BALANCE } from '../engine/config';
 import { getLand } from '../data/lands';
-import { applyAction, costOf, isLocked, reactDamage, reducedDamage } from '../engine/game';
+import { applyAction, canAttack, canPlaceBase, costOf, isLocked, reactDamage, reducedDamage } from '../engine/game';
 import { resourceRules } from '../engine/resources';
-import type { Action, GameState, PlayerState } from '../engine/types';
+import type { Action, CardDef, GameState, PlayerState } from '../engine/types';
+import { WEIGHTS } from '../balance/weights';
 
 // 유지비 유닛을 내도 다음 턴 시작에 판 위 유지비를 모두 낼 수 있는지 (못 내면 그 유닛이 파괴된다)
 function canKeep(me: PlayerState, upkeep: number, cost: number): boolean {
@@ -16,6 +17,25 @@ function canKeep(me: PlayerState, upkeep: number, cost: number): boolean {
   return next.pool >= total;
 }
 
+// 빙의로 얻는 가치 (카드 점수표 가중치 기준): 상속자 레인에서 다시 터지는 소환 시 효과 + 상속자가 물려받는 파괴 시 효과
+//   맞은편 피해는 상속자 맞은편에 적이 있을 때만, 드로우는 손패에 자리가 있을 때만 센다. 연쇄 효과는 빙의로 발동하지 않는다
+function inheritValue(me: PlayerState, foe: PlayerState, def: CardDef, heirLane: number): number {
+  let v = 0;
+  for (const e of def.effects ?? []) {
+    if (e.chain) continue;
+    const n = e.args?.n ?? 0;
+    if (e.trigger === 'onDeath') v += n * (WEIGHTS.op[e.op] ?? 0) * WEIGHTS.onDeathFactor;
+    if (e.trigger !== 'onPlay') continue;
+    if (e.op === 'strikeOpposite') {
+      const t = foe.lanes[heirLane];
+      if (t) v += Math.min(reducedDamage(t, n, 'resist'), t.hp) * WEIGHTS.op.strikeOpposite;
+    } else if (e.op === 'draw') v += Math.min(n, BALANCE.hand.max - me.hand.length) * WEIGHTS.op.draw;
+    else if (e.op === 'buffSelf') v += (e.args?.atk ?? 0) + (e.args?.hp ?? 0);
+    else v += n * (WEIGHTS.op[e.op] ?? 0);
+  }
+  return v;
+}
+
 // 단순 탐욕 봇: 진영 자원 규칙을 '대충 합리적으로' 쓰는 수준. 밸런스 경향 확인용.
 export function chooseAction(s: GameState): Action {
   const p = s.active;
@@ -25,8 +45,9 @@ export function chooseAction(s: GameState): Action {
   const hand = me.hand.map((c) => { const def = getCard(c.cardId); return { c, def, cost: costOf(s, me, def), locked: isLocked(me, def) }; });
   const emptyLanes = me.lanes.flatMap((u, i) => (u ? [] : [i]));
 
-  // 1. 성소 배치
-  if (me.faction === 'covalent' && !me.latticePlayed && me.latticePile > 0) return { type: 'lattice' };
+  // 1. 베이스 배치
+  const baseCard = hand.find((h) => h.def.kind === 'base');
+  if (baseCard && canPlaceBase(me)) return { type: 'base', uid: baseCard.c.uid };
 
   // 2. 검은 달 교단: 고레벨 카드를 내기 위해 저레벨(≤3)이나 잠긴 손패 제물. 손패 2장은 남긴다.
   if (me.faction === 'decay' && emptyLanes.length) {
@@ -38,7 +59,7 @@ export function chooseAction(s: GameState): Action {
       return { type: 'decay', from: 'element', element: stable };
     }
     if (target && target.def.level >= 4 && target.cost > me.pool) {
-      const fuel = hand.filter((h) => h !== target && (h.def.level <= 3 || h.locked)).sort((a, b) => a.def.level - b.def.level);
+      const fuel = hand.filter((h) => h !== target && h.def.kind !== 'base' && (h.def.level <= 3 || h.locked)).sort((a, b) => a.def.level - b.def.level);
       let total = me.pool, used = 0;
       for (const h of fuel) { if (total >= target.cost) break; total += h.def.level + 1; used++; }
       if (total >= target.cost && hand.length - 1 - used >= 2) return { type: 'decay', from: 'hand', uid: fuel[0].c.uid };
@@ -94,18 +115,30 @@ export function chooseAction(s: GameState): Action {
     }
   }
 
-  // 4. 공격: 빈 레인이면 상대 파멸, 유닛이면 먼저 쳐서 잡거나(반격 없음) 반격을 버틸 때만
-  for (let lane = 0; lane < me.lanes.length; lane++) {
-    const u = me.lanes[lane];
-    if (!u || u.sick || u.attacked || u.atk <= 0) continue;
-    const t = foe.lanes[lane];
-    if (!t || t.hp <= reducedDamage(t, u.atk, 'armor') || u.hp > reducedDamage(u, t.atk, 'armor')) return { type: 'attack', lane };
+  // 4. 검은 달 교단: 빙의. 공격할 수 없는(방금 소환한) 효과 유닛을 바쳐 다른 내 유닛에서 소환 시 효과를 다시 발동하고 레벨만큼 영혼을 돌려받는다
+  //    효과 가치가 2 이상이고, 돌려받은 영혼으로 손패 유닛을 더 낼 수 있거나 효과 가치가 몸체(공격+체력)보다 클 때만
+  if (me.faction === 'decay') {
+    let pick: { uid: number; heir: number; value: number } | null = null;
+    for (const u of me.lanes) {
+      if (!u || canAttack(u)) continue;
+      const def = getCard(u.cardId);
+      const gain = def.level + BALANCE.decay.decayBoardBonus;
+      const spendable = hand.some((h) => (h.def.kind ?? 'unit') === 'unit' && !h.locked && h.cost <= me.pool + gain && canKeep(me, h.def.upkeep ?? 0, h.cost));
+      for (let hl = 0; hl < me.lanes.length; hl++) {
+        const heir = me.lanes[hl];
+        if (!heir || heir === u) continue;
+        // 오래 남을 유닛일수록 물려받은 파괴 시 효과를 늦게까지 들고 있다 (소멸 유닛은 조금 깎는다)
+        const value = inheritValue(me, foe, def, hl) - (heir.halfLife !== undefined ? 0.5 : 0);
+        if (value >= 2 && (spendable || value >= u.atk + u.hp) && (!pick || value > pick.value)) pick = { uid: u.uid, heir: heir.uid, value };
+      }
+    }
+    if (pick) return { type: 'decay', from: 'board', uid: pick.uid, heir: pick.heir };
   }
 
-  // 5. 검은 달 교단: 다음 턴 시작에 소멸로 사라질 유닛은 공격을 마친 뒤 유닛 제물 (영혼로 3단계를 다시 돈다)
+  // 5. 검은 달 교단: 다음 턴 시작에 소멸로 사라질 유닛은 공격하지 못하는 유닛(방금 소환 등)이면 유닛 제물 (영혼로 3단계를 다시 돈다)
   //    효과가 있는 유닛이면 가장 오래 남을 내 유닛(소멸 없음 우선, 체력 높은 순)에게 빙의
   if (me.faction === 'decay') {
-    const expiring = me.lanes.find((u) => u?.halfLife === 1);
+    const expiring = me.lanes.find((u) => u?.halfLife === 1 && !canAttack(u));
     if (expiring) {
       const heir = getCard(expiring.cardId).effects?.length
         ? me.lanes

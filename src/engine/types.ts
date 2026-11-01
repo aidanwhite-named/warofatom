@@ -1,6 +1,6 @@
 // 코드 이름은 초기 설계(원소 세계관)에서 남은 내부 이름이고, 화면·문서는 판타지 세계관 이름을 쓴다 (docs/rules.md 0절 용어표)
 //   union = 잿불 마탑, covalent = 은빛 서약 기사단, decay = 검은 달 교단
-//   entropy = 파멸, elements/tiles = 대지, lattice = 성소, decay 행동 = 제물, halfLife = 소멸, react = 융합 주문
+//   entropy = 파멸, elements/tiles = 대지, bases = 베이스, decay 행동 = 제물, halfLife = 소멸, react = 융합 주문
 export type Faction = 'union' | 'covalent' | 'decay';
 export type Trigger = 'onPlay' | 'onDeath' | 'onCharge'; // onCharge: 기력(charge:N)이 다 찰 때마다
 
@@ -11,7 +11,7 @@ export type EffectDef = {
   chain?: boolean; // true면 '연쇄' 조건(이번 턴 마탑 유닛 소환 이력)일 때만 발동
 };
 
-export type CardKind = 'unit' | 'item' | 'spell';
+export type CardKind = 'unit' | 'item' | 'spell' | 'base';
 
 export type CardDef = {
   id: string;
@@ -53,14 +53,16 @@ export type PlayerState = {
   discard: CardInstance[];
   lanes: (Unit | null)[];
   pool: number; // 지금 쓸 수 있는 자원 (금화/신앙/영혼)
-  lattices: number; // 전장에 세운 성소 수
-  latticePile: number; // 아직 세우지 않은 성소 수 (덱과 별도)
-  latticePlayed: boolean;
+  bases: number; // 판 위에 깐 베이스 수. 매 턴 시작에 자원 +1씩
+  basesPlaced: number; // 이번 턴에 깐 베이스 수 (한 턴에 낼 수 있는 수는 내 턴 번호만큼)
+  borrowed: boolean; // 첫 턴에 미리 당겨 쓴 자원이 있어 다음 턴 시작에 파멸 +1
   unitsPlayedThisTurn: number;
   cardsUsedThisTurn: number; // 손패에서 사용한 장수 (다음 턴 시작에 이만큼 드로우)
   cardsUsedLastTurn: number;
+  shuffledThisTurn: boolean; // 이번 턴에 손패를 갈아엎었는지 (턴당 1번)
   cardsDecayedThisTurn: number; // 손패 제물 장수 (BALANCE.hand.decayCounts까지만 사용으로 센다)
   turns: number; // 내 턴이 시작된 횟수
+  spire: number; // 마탑 첨탑 층수 (주문·융합 주문으로 쌓인다)
   elements: string[]; // 점령한 대지 키
   capture: number[]; // 레인별 점령 게이지
   tech: number; // 전승 단계 = 지금까지 점령한 대지의 최고 등급 (대지를 써도 내려가지 않음)
@@ -81,22 +83,23 @@ export type GameState = {
 
 export type Action =
   | { type: 'play'; uid: number; lane: number; overload?: boolean } // lane: 유닛은 빈 칸, 아이템은 내 유닛 칸, 마법은 대상 레인
-  | { type: 'lattice' }
-  | { type: 'attack'; lane: number }
+  | { type: 'base'; uid: number } // 손패의 베이스 카드를 깐다
+  | { type: 'attack'; lane: number } // 턴 종료 시 자동으로 일어난다. 테스트·시뮬용으로만 직접 쓴다
   | { type: 'decay'; from: 'hand' | 'board'; uid: number; heir?: number } // 제물. heir: 유닛 제물 시 빙의할 내 유닛 uid
   | { type: 'decay'; from: 'element'; element: string } // 교단: 가진 대지를 제물로 바쳐 영혼
   | { type: 'react'; lane: number; a: string; b: string } // 마탑: 가진 대지 2개로 융합 주문
+  | { type: 'shuffle' } // 손패를 전부 덱에 섞고 같은 장수를 다시 뽑는다 (파멸 페널티)
   | { type: 'endTurn' };
 
-export type EntropyCause = 'natural' | 'attack' | 'effect' | 'fatigue' | 'overload' | 'idle';
+export type EntropyCause = 'natural' | 'attack' | 'effect' | 'fatigue' | 'overload' | 'idle' | 'shuffle' | 'borrow';
 
 export type GameEvent =
   | { t: 'turnStart'; p: 0 | 1; pool: number }
   | { t: 'draw'; p: 0 | 1; cardId: string }
   | { t: 'play'; p: 0 | 1; cardId: string; lane: number }
-  | { t: 'lattice'; p: 0 | 1; total: number }
-  | { t: 'attack'; p: 0 | 1; lane: number; target: 'unit' | 'entropy'; dmg: number }
-  | { t: 'counter'; p: 0 | 1; lane: number; dmg: number } // 공격을 버틴 유닛의 반격 (p = 반격한 쪽)
+  | { t: 'base'; p: 0 | 1; total: number }
+  | { t: 'attack'; p: 0 | 1; lane: number; at: number; target: 'unit' | 'entropy'; dmg: number } // lane: 공격한 레인, at: 맞은 레인
+  | { t: 'counter'; p: 0 | 1; lane: number; at: number; dmg: number } // 공격을 버틴 유닛의 반격 (p = 반격한 쪽)
   | { t: 'death'; p: 0 | 1; cardId: string; lane: number; reason: 'combat' | 'halfLife' | 'decay' | 'effect' | 'upkeep' }
   | { t: 'decay'; p: 0 | 1; cardId: string; gain: number }
   | { t: 'inherit'; p: 0 | 1; cardId: string; lane: number }
@@ -105,6 +108,9 @@ export type GameEvent =
   | { t: 'react'; p: 0 | 1; lane: number; elements: [string, string]; dmg: number }
   | { t: 'burn'; p: 0 | 1; element: string; gain: number }
   | { t: 'transmute'; p: 0 | 1; from: string; to: string }
+  | { t: 'shuffle'; p: 0 | 1; n: number }
+  | { t: 'spire'; p: 0 | 1; floors: number } // 첨탑이 쌓인 뒤의 층수
+  | { t: 'bombard'; p: 0 | 1; lane: number; dmg: number } // 첨탑 잔불 포격 (lane: 맞은 적 레인)
   | { t: 'entropy'; p: 0 | 1; amount: number; total: number; cause: EntropyCause }
   | { t: 'win'; p: 0 | 1 };
 

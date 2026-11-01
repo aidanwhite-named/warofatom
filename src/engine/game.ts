@@ -8,7 +8,7 @@ import { nextRandom, shuffle } from './rng';
 import type { Action, CardDef, CardKind, EntropyCause, Faction, GameEvent, GameState, PlayerState, Trigger, Unit } from './types';
 import { LANES } from './types';
 
-export type DeckSpec = { faction: Faction; cards: string[] };
+export type DeckSpec = { faction: Faction; cards: string[] }; // 베이스 카드(base_<진영>)도 cards에 들어간다
 
 // 진영 고유 카드 종류. 표에 없는 종류는 엔진이 거부한다 (교단의 고유 행동은 카드가 아니라 제물·빙의)
 export const FACTION_KINDS: Record<Faction, CardKind[]> = {
@@ -26,7 +26,6 @@ export function createGame(a: DeckSpec, b: DeckSpec, seed = 1): GameState {
       rng,
     );
     rng = ns;
-    const cov = spec.faction === 'covalent';
     return {
       faction: spec.faction,
       entropy: 0,
@@ -35,14 +34,16 @@ export function createGame(a: DeckSpec, b: DeckSpec, seed = 1): GameState {
       discard: [],
       lanes: Array(LANES).fill(null),
       pool: 0,
-      lattices: cov ? BALANCE.covalent.startLattices : 0,
-      latticePile: cov ? BALANCE.covalent.pileSize : 0,
-      latticePlayed: false,
+      bases: 0,
+      basesPlaced: 0,
+      borrowed: false,
       unitsPlayedThisTurn: 0,
       cardsUsedThisTurn: 0,
       cardsUsedLastTurn: 1, // 첫 턴 드로우는 예전처럼 1장
+      shuffledThisTurn: false,
       cardsDecayedThisTurn: 0,
       turns: 0,
+      spire: 0,
       elements: [],
       capture: Array(LANES).fill(0),
       tech: 0,
@@ -172,13 +173,14 @@ export function costOf(s: GameState, pl: PlayerState, def: CardDef): number {
 export function validateDeck(spec: DeckSpec): string[] {
   const d = BALANCE.deck;
   const errors: string[] = [];
-  if (spec.cards.length !== d.size) errors.push(`덱은 ${d.size}장이어야 한다 (지금 ${spec.cards.length}장)`);
+  if (spec.cards.length < d.size || spec.cards.length > d.maxTotal) errors.push(`덱은 ${d.size}~${d.maxTotal}장이어야 한다 (지금 ${spec.cards.length}장)`);
   const counts = new Map<string, number>();
   for (const id of spec.cards) counts.set(id, (counts.get(id) ?? 0) + 1);
   for (const [id, n] of counts) {
     const def = getCard(id);
-    if (n > d.copies) errors.push(`${def.name}: 같은 카드는 ${d.copies}장까지 (지금 ${n}장)`);
-    if (def.faction !== spec.faction && !FACTION_KINDS[spec.faction].includes(def.kind ?? 'unit')) errors.push(`${def.name}: 객원으로 쓸 수 없는 종류`);
+    const kind = def.kind ?? 'unit';
+    if (kind !== 'base' && n > d.copies) errors.push(`${def.name}: 같은 카드는 ${d.copies}장까지 (지금 ${n}장)`);
+    if (def.faction !== spec.faction && !FACTION_KINDS[spec.faction].includes(kind)) errors.push(`${def.name}: 객원으로 쓸 수 없는 종류`);
   }
   const guests = spec.cards.filter((id) => getCard(id).faction !== spec.faction).length;
   if (guests > d.guestMax) errors.push(`객원 카드는 ${d.guestMax}장까지 (지금 ${guests}장)`);
@@ -189,7 +191,28 @@ export function validateDeck(spec: DeckSpec): string[] {
 export function levelCap(pl: PlayerState): number {
   const t = BALANCE.elements.tech;
   if (!BALANCE.elements.enabled || !t.enabled) return Infinity;
-  return Math.max(t.baseLevel[pl.faction], pl.tech + t.periodOffset);
+  const sp = BALANCE.union.spire;
+  const spire = sp.enabled ? Math.floor(pl.spire / sp.techPer) : 0;
+  return Math.max(t.baseLevel[pl.faction] + spire, pl.tech + t.periodOffset);
+}
+
+// 마탑 첨탑: 주문·융합 주문으로 층을 쌓는다 (최대 max층)
+function raiseSpire(s: GameState, p: 0 | 1, n: number) {
+  const pl = s.players[p], sp = BALANCE.union.spire;
+  if (!sp.enabled || pl.faction !== 'union' || pl.spire >= sp.max) return;
+  pl.spire = Math.min(sp.max, pl.spire + n);
+  emit(s, { t: 'spire', p, floors: pl.spire });
+}
+
+// 첨탑 잔불 포격: 공격력이 가장 높은 적 유닛에게 floor(층/bombardPer) 피해 (저항 적용)
+function bombard(s: GameState, p: 0 | 1) {
+  const sp = BALANCE.union.spire;
+  const dmg = sp.enabled ? Math.floor(s.players[p].spire / sp.bombardPer) : 0;
+  const foe = s.players[1 - p];
+  const lane = foe.lanes.reduce<number | null>((best, u, i) => (u && (best === null || u.atk > foe.lanes[best]!.atk) ? i : best), null);
+  if (dmg <= 0 || lane === null) return;
+  emit(s, { t: 'bombard', p, lane, dmg });
+  ops.strikeOpposite({ s, p, lane, unit: null }, { n: dmg });
 }
 
 export function isLocked(pl: PlayerState, def: CardDef): boolean {
@@ -266,14 +289,17 @@ function startTurn(s: GameState) {
   const pl = s.players[p];
   s.turn++;
   pl.turns++;
-  pl.latticePlayed = false;
+  pl.basesPlaced = 0;
   pl.unitsPlayedThisTurn = 0;
   pl.cardsUsedLastTurn = pl.cardsUsedThisTurn;
   pl.cardsUsedThisTurn = 0;
   pl.cardsDecayedThisTurn = 0;
+  pl.shuffledThisTurn = false;
   addEntropy(s, p, BALANCE.naturalEntropy, 'natural');
+  if (pl.borrowed) { pl.borrowed = false; addEntropy(s, p, BALANCE.base.borrowEntropy, 'borrow'); }
   if (s.winner !== null) return;
   resourceRules[pl.faction].onTurnStart(pl);
+  if (pl.turns === 1) pl.pool += BALANCE.base.borrow;
   if (p === 1 && pl.turns === 1) pl.pool += BALANCE[pl.faction].secondPool;
   emit(s, { t: 'turnStart', p, pool: pl.pool });
   // 지난 턴 사용한 만큼 드로우 (손패 상한까지)
@@ -292,6 +318,7 @@ function startTurn(s: GameState) {
     gainEnergy(s, p, lane);
   });
   if (pl.faction === 'decay') transmute(s, p);
+  if (pl.faction === 'union') bombard(s, p);
   captureTiles(s, p);
 }
 
@@ -330,7 +357,9 @@ export function applyAction(state: GameState, action: Action): GameState {
       if (kind === 'unit') {
         // 종족 공명: 이 카드 종족의 대지를 가졌으면 +N/+N
         const buff = pl.elements.some((e) => getLand(e).race === def.race) ? BALANCE.elements.groupBuff * resonance(s, def.race) : 0;
-        const unit: Unit = { uid: inst.uid, cardId: def.id, atk: def.atk + buff, hp: def.hp + buff, sick: true, attacked: false, halfLife: keywordValue(def, 'halfLife') };
+        // 기사단 결속: 점령한 대지 하나당 +N/+N
+        const bind = pl.faction === 'covalent' ? Math.floor(pl.elements.length * BALANCE.covalent.bind) : 0;
+        const unit: Unit = { uid: inst.uid, cardId: def.id, atk: def.atk + buff + bind, hp: def.hp + buff + bind, sick: true, attacked: false, halfLife: keywordValue(def, 'halfLife') };
         pl.lanes[lane] = unit;
         pl.unitsPlayedThisTurn++;
         runTrigger(s, p, lane, def, 'onPlay', unit, chained);
@@ -346,48 +375,30 @@ export function applyAction(state: GameState, action: Action): GameState {
         // 주문: 고른 레인에서 효과만 발동하고 버림 더미로
         pl.discard.push(inst);
         runTrigger(s, p, lane, def, 'onPlay', null, chained);
+        raiseSpire(s, p, BALANCE.union.spire.perSpell + (action.overload ? BALANCE.union.spire.overloadBonus : 0));
       }
       break;
     }
-    case 'lattice': {
-      if (pl.faction !== 'covalent') throw new Error('only covalent can place lattice');
-      if (pl.latticePlayed) throw new Error('lattice already placed this turn');
-      if (pl.latticePile <= 0) throw new Error('no lattice left');
-      pl.latticePile--;
-      pl.lattices++;
-      pl.latticePlayed = true;
-      emit(s, { t: 'lattice', p, total: pl.lattices });
+    case 'base': {
+      const idx = pl.hand.findIndex((c) => c.uid === action.uid);
+      if (idx < 0 || getCard(pl.hand[idx].cardId).kind !== 'base') throw new Error('not a base card in hand');
+      if (!canPlaceBase(pl)) throw new Error('cannot place more bases this turn');
+      pl.discard.push(...pl.hand.splice(idx, 1));
+      pl.bases++;
+      pl.basesPlaced++;
+      pl.cardsUsedThisTurn++;
+      emit(s, { t: 'base', p, total: pl.bases });
       break;
     }
     case 'attack': {
-      const u = pl.lanes[action.lane];
-      if (!u) throw new Error('no unit in lane');
-      if (u.sick || u.attacked) throw new Error('unit cannot attack');
-      u.attacked = true;
-      const target = foe.lanes[action.lane];
-      if (target) {
-        // 공격자가 먼저 친다. 대상이 쓰러지면 끝, 버텨내면 반격한다
-        const foeP = (1 - p) as 0 | 1;
-        emit(s, { t: 'attack', p, lane: action.lane, target: 'unit', dmg: u.atk });
-        target.hp -= reducedDamage(target, u.atk, 'armor');
-        if (target.hp <= 0) destroyUnit(s, foeP, action.lane, 'combat');
-        else if (target.atk > 0) {
-          emit(s, { t: 'counter', p: foeP, lane: action.lane, dmg: target.atk });
-          u.hp -= reducedDamage(u, target.atk, 'armor');
-          if (u.hp <= 0) destroyUnit(s, p, action.lane, 'combat');
-        }
-        // 전투에서 살아남은 쪽은 기력 +1
-        gainEnergy(s, p, action.lane);
-        gainEnergy(s, (1 - p) as 0 | 1, action.lane);
-      } else {
-        // 막을 유닛이 없으면 공격력만큼 상대 파멸 증가
-        emit(s, { t: 'attack', p, lane: action.lane, target: 'entropy', dmg: u.atk });
-        addEntropy(s, (1 - p) as 0 | 1, u.atk, 'attack');
-      }
+      if (!pl.lanes[action.lane]) throw new Error('no unit in lane');
+      if (!canAttack(pl.lanes[action.lane]!)) throw new Error('unit cannot attack');
+      attackWith(s, p, action.lane);
       break;
     }
     case 'decay': {
       if (pl.faction !== 'decay') throw new Error('only decay faction can decay');
+      if (action.from === 'hand' && getCard(pl.hand.find((c) => c.uid === action.uid)?.cardId ?? '').kind === 'base') throw new Error('bases cannot be sacrificed');
       if (action.from === 'element') {
         takeElement(pl, action.element);
         pl.pool += BALANCE.elements.burnGain;
@@ -407,6 +418,7 @@ export function applyAction(state: GameState, action: Action): GameState {
       } else {
         const lane = pl.lanes.findIndex((u) => u?.uid === action.uid);
         if (lane < 0) throw new Error('unit not on board');
+        if (canAttack(pl.lanes[lane]!)) throw new Error('attacking unit cannot be sacrificed');
         cardId = pl.lanes[lane]!.cardId;
         gain = decayGain.board(getCard(cardId).level);
         // 빙의: 다른 내 유닛이 제물로 바친 유닛의 효과를 물려받는다. 소환 시 효과는 그 자리에서 다시 발동
@@ -436,9 +448,32 @@ export function applyAction(state: GameState, action: Action): GameState {
       emit(s, { t: 'react', p, lane: action.lane, elements: [action.a, action.b], dmg });
       ops.strikeOpposite({ s, p, lane: action.lane, unit: null }, { n: dmg });
       addEntropy(s, (1 - p) as 0 | 1, BALANCE.elements.react.entropy, 'effect');
+      raiseSpire(s, p, BALANCE.union.spire.perReact);
+      break;
+    }
+    case 'shuffle': {
+      if (pl.shuffledThisTurn || pl.hand.length === 0) throw new Error('cannot shuffle');
+      const n = pl.hand.length;
+      const [bag, ns] = shuffle([...pl.deck, ...pl.hand], s.rng);
+      s.rng = ns;
+      pl.deck = bag;
+      pl.hand = [];
+      pl.shuffledThisTurn = true;
+      emit(s, { t: 'shuffle', p, n });
+      addEntropy(s, p, BALANCE.hand.shuffleEntropy, 'shuffle');
+      if (s.winner !== null) break;
+      for (let i = 0; i < n; i++) drawCard(s, p);
       break;
     }
     case 'endTurn': {
+      // 첫 턴에 당겨 쓴 자원이 있으면 다음 턴 시작에 파멸 (아래 공격·방치 처리보다 먼저 기록)
+      if (pl.turns === 1 && pl.pool < BALANCE.base.borrow) pl.borrowed = true;
+      // 공격할 수 있는 유닛은 레인 순서대로 자동 공격
+      for (let lane = 0; lane < LANES && s.winner === null; lane++) {
+        const u = pl.lanes[lane];
+        if (u && canAttack(u)) attackWith(s, p, lane);
+      }
+      if (s.winner !== null) break;
       // 쓸 수 있는 카드가 있었는데 한 장도 쓰지 않았으면 파멸 페널티
       if (pl.cardsUsedThisTurn === 0 && canUseCard(s)) addEntropy(s, p, BALANCE.hand.idleEntropy, 'idle');
       if (s.winner !== null) break;
@@ -450,22 +485,72 @@ export function applyAction(state: GameState, action: Action): GameState {
   return s;
 }
 
+// 베이스는 한 턴에 내 턴 번호만큼까지 깔 수 있다 (1턴 1장, 2턴 2장 …). 판 위 최대 BALANCE.base.max개
+export function canPlaceBase(pl: PlayerState): boolean {
+  return pl.basesPlaced < pl.turns && pl.bases < BALANCE.base.max;
+}
+
+// 공격할 수 있는 유닛은 턴 종료 때 반드시 공격한다 (직접 공격 버튼 없음)
+export function canAttack(u: Unit): boolean {
+  return !u.sick && !u.attacked && u.atk > 0;
+}
+
+// 공격 대상 레인: 맞은편에 적이 있으면 그 칸, 없으면 가장 가까운 적 유닛, 적이 하나도 없으면 null(파멸 직접 공격)
+function targetLane(foe: PlayerState, lane: number): number | null {
+  let best: number | null = null;
+  foe.lanes.forEach((t, i) => {
+    if (t && (best === null || Math.abs(i - lane) < Math.abs(best - lane))) best = i;
+  });
+  return best;
+}
+
+function attackWith(s: GameState, p: 0 | 1, lane: number) {
+  const pl = s.players[p], foe = s.players[1 - p];
+  const u = pl.lanes[lane]!;
+  u.attacked = true;
+  const at = targetLane(foe, lane);
+  const target = at === null ? null : foe.lanes[at]!;
+  if (target && at !== null) {
+    // 공격자가 먼저 친다. 대상이 쓰러지면 끝, 버텨내면 반격한다
+    const foeP = (1 - p) as 0 | 1;
+    emit(s, { t: 'attack', p, lane, at, target: 'unit', dmg: u.atk });
+    target.hp -= reducedDamage(target, u.atk, 'armor');
+    if (target.hp <= 0) destroyUnit(s, foeP, at, 'combat');
+    else if (target.atk > 0) {
+      emit(s, { t: 'counter', p: foeP, lane: at, at: lane, dmg: target.atk });
+      u.hp -= reducedDamage(u, target.atk, 'armor');
+      if (u.hp <= 0) destroyUnit(s, p, lane, 'combat');
+    }
+    // 전투에서 살아남은 쪽은 기력 +1
+    gainEnergy(s, p, lane);
+    gainEnergy(s, foeP, at);
+  } else {
+    // 막을 유닛이 하나도 없으면 공격력만큼 상대 파멸 증가
+    emit(s, { t: 'attack', p, lane, at: lane, target: 'entropy', dmg: u.atk });
+    addEntropy(s, (1 - p) as 0 | 1, u.atk, 'attack');
+  }
+}
+
 // 지금 손패에서 낼(또는 제물로 바칠) 수 있는 카드가 있는지
 function canUseCard(s: GameState): boolean {
-  return legalActions(s).some((a) => a.type === 'play' || (a.type === 'decay' && a.from === 'hand'));
+  return legalActions(s).some((a) => a.type === 'play' || a.type === 'base' || (a.type === 'decay' && a.from === 'hand'));
 }
 
 export function legalActions(s: GameState): Action[] {
   if (s.winner !== null) return [];
   const pl = s.players[s.active];
   const out: Action[] = [{ type: 'endTurn' }];
-  if (pl.faction === 'covalent' && !pl.latticePlayed && pl.latticePile > 0) out.push({ type: 'lattice' });
+  if (!pl.shuffledThisTurn && pl.hand.length > 0) out.push({ type: 'shuffle' });
   const emptyLanes = pl.lanes.flatMap((u, i) => (u ? [] : [i]));
   const unitLanes = pl.lanes.flatMap((u, i) => (u ? [i] : []));
   const o = BALANCE.union.overload;
   for (const c of pl.hand) {
     const def = getCard(c.cardId);
     const kind = def.kind ?? 'unit';
+    if (kind === 'base') {
+      if (canPlaceBase(pl)) out.push({ type: 'base', uid: c.uid });
+      continue;
+    }
     const lanes = kind === 'unit' ? emptyLanes : kind === 'item' ? unitLanes : Array.from({ length: LANES }, (_, i) => i);
     const cost = costOf(s, pl, def);
     if (isLocked(pl, def)) { if (pl.faction === 'decay') out.push({ type: 'decay', from: 'hand', uid: c.uid }); continue; }
@@ -477,8 +562,7 @@ export function legalActions(s: GameState): Action[] {
   }
   pl.lanes.forEach((u, lane) => {
     if (!u) return;
-    if (!u.sick && !u.attacked && u.atk > 0) out.push({ type: 'attack', lane });
-    if (pl.faction === 'decay') {
+    if (pl.faction === 'decay' && !canAttack(u)) {
       out.push({ type: 'decay', from: 'board', uid: u.uid });
       for (const h of pl.lanes) if (h && h !== u) out.push({ type: 'decay', from: 'board', uid: u.uid, heir: h.uid });
     }

@@ -53,6 +53,7 @@ for (const f of factions) {
   for (const id of DECKS[f].cards) counts.set(id, (counts.get(id) ?? 0) + 1);
   for (const [id, copies] of counts) {
     const def = getCard(id);
+    if (def.kind === 'base') continue; // 베이스 카드는 자원이라 바닐라 비교가 의미 없다
     const van = vanillaOf(def);
     const wVan = withCard(def, van, () => winRate(f));
     const wVan1 = withCard(def, { ...van, hp: van.hp! + 1 }, () => winRate(f));

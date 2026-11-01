@@ -1,4 +1,5 @@
 :root {
+  --display: "Cinzel", "Black Han Sans", "Malgun Gothic", serif; --title: "Cinzel Decorative", "Black Han Sans", "Malgun Gothic", serif;
   --bg: #0b0d13; --panel: #161a24; --panel2: #1d2230; --line: #2b3242; --text: #e9ecf3; --dim: #8b93a6;
   --union: #e08a3c; --covalent: #4a90d9; --decay: #9b6bd6;
   --ok: #52d68a; --warn: #f2c14e; --bad: #ff5d5d; --gold: #ffd166;
@@ -261,6 +262,8 @@ main { padding: 24px; max-width: 1280px; margin: 0 auto; }
 .turn-pill.me b { color: var(--gold); } .turn-pill.foe b { color: #ff8a8a; }
 .end-turn { position: absolute; left: 1040px; top: 320px; width: 220px; height: 70px; border-radius: 16px; font: inherit; font-size: 20px; font-weight: 900; cursor: pointer; color: #2a1a00;
   background: linear-gradient(#ffe08a, #e0a12d); border: 2px solid #fff3c4; box-shadow: 0 6px 18px #000a, inset 0 -4px 0 #0003; transition: filter .15s, transform .1s; }
+.shuffle { position: absolute; left: 1040px; top: 400px; width: 220px; z-index: 9; }
+.shuffle small { margin-left: 6px; color: #ff9a9a; }
 .end-turn:hover:not(:disabled) { filter: brightness(1.12); }
 .end-turn:active:not(:disabled) { transform: scale(.97); }
 .end-turn:disabled { background: linear-gradient(#4a5168, #2d3244); color: #9aa2b8; border-color: #5d667f; cursor: default; }
@@ -269,7 +272,7 @@ main { padding: 24px; max-width: 1280px; margin: 0 auto; }
 .end-turn small { display: block; font-size: 12px; font-weight: 700; }
 @keyframes endGlow { 50% { box-shadow: 0 0 30px #52d68a, 0 6px 18px #000a; } }
 
-.hint { position: absolute; left: 276px; top: 538px; width: 712px; height: 40px; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 14px; z-index: 7; }
+.hint { position: absolute; left: 276px; top: 524px; width: 712px; height: 40px; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 14px; z-index: 9; }
 .hint em { color: #ffb36b; font-style: normal; font-size: 13px; }
 .thinking i { animation: blink 1.2s infinite; font-style: normal; }
 .thinking i:nth-child(2) { animation-delay: .2s; } .thinking i:nth-child(3) { animation-delay: .4s; }
@@ -284,9 +287,10 @@ main { padding: 24px; max-width: 1280px; margin: 0 auto; }
 .hcard { --cw: 116px; position: absolute; left: 0; top: 0; transform: rotate(var(--r)); transform-origin: 50% 120%; transition: transform .16s ease-out, box-shadow .16s; pointer-events: none; }
 .hcard.playable { box-shadow: 0 0 0 3px #52d68a, 0 0 16px #52d68a, 0 6px 14px #000a; }
 .hcard.res:not(.playable) { box-shadow: 0 0 0 2px var(--gc), 0 0 14px var(--gc), 0 6px 14px #000a; }
-.hslot:hover .hcard { transform: translateY(-112px) scale(1.5); }
-.hslot.selected .hcard { transform: translateY(-34px) rotate(0deg); box-shadow: 0 0 0 3px var(--gold), 0 0 24px var(--gold); }
-.hslot.selected:hover .hcard { transform: translateY(-112px) scale(1.5); }
+/* 설명은 우측 .preview 패널에 크게 띄우므로 카드는 살짝만 들어 올린다 (마우스 자리를 벗어나지 않게) */
+.hslot:hover .hcard { transform: translateY(-16px) rotate(0deg); }
+.hslot.selected .hcard { transform: translateY(-16px) rotate(0deg); box-shadow: 0 0 0 3px var(--gold), 0 0 24px var(--gold); }
+.hslot.selected:hover .hcard { transform: translateY(-16px) rotate(0deg); }
 
 .preview { position: absolute; z-index: 60; pointer-events: none; opacity: 0; transition: opacity .12s; display: flex; flex-direction: column; gap: 8px; }
 .preview.show { opacity: 1; }
@@ -340,3 +344,17 @@ main { padding: 24px; max-width: 1280px; margin: 0 auto; }
 .panel.me .res[data-tip]:hover::after { bottom: calc(100% + 6px); }
 .res.lat[data-tip]:hover::after { left: auto; right: -4px; }
 .panel:has(.res[data-tip]:hover) { z-index: 75; }
+
+/* 판타지 게임 폰트 */
+.logo, .page-head h2, .deck h3, .fac-title, .modal-info h2, .c-name, .p-name, .t-name, .btn.big, .end-turn, .turn-pill b, .toast { font-family: var(--display); }
+.hero h1, .banner b, .r-box h1 { font-family: var(--title); font-weight: 900; }
+
+/* ── 덱 편집 ── */
+.ed-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 8px; }
+.ed-bar input { margin-left: 6px; }
+.ed-sum { flex: 1; color: var(--dim, #9aa3b5); }
+.ed-err { margin: 0 0 10px; padding-left: 18px; color: #ff9a9a; font-size: 13px; }
+.cell.ed { cursor: default; }
+.cell.ed:hover { transform: none; }
+.cell.ed.in .card { box-shadow: 0 0 0 3px var(--gold); }
+.ed-ctrl { display: flex; gap: 8px; justify-content: center; margin-top: 6px; }

@@ -29,7 +29,7 @@ export const CARDS: CardDef[] = [
     { upkeep: 1, effects: [{ trigger: 'onPlay', op: 'strikeOpposite', args: { n: 3 } }], text: '소환: 맞은편 적 3 피해' }),
   u('inferno_master', '업화의 대가', 'union', '화염술사', null, 6, 6, 5,
     { effects: [{ trigger: 'onPlay', op: 'entropy', args: { n: 2 } }], text: '소환: 상대 파멸 +2' }),
-  u('giant_captain', '거인 용병대장', 'union', '용병', null, 7, 10, 11, { upkeep: 3 }),
+  u('giant_captain', '거인 용병대장', 'union', '용병', null, 7, 10, 10, { upkeep: 3 }),
   // 주문 (마탑 전용): 고른 레인에 효과만 발동. 폭주로 파멸을 내고 할인 가능
   u('sp_fireball', '화염구', 'union', '연금술사', 'smoke_vale', 2, 0, 0,
     { kind: 'spell', effects: [{ trigger: 'onPlay', op: 'strikeOpposite', args: { n: 2 } }], text: '주문: 대상 레인의 적 2 피해' }),
@@ -39,21 +39,21 @@ export const CARDS: CardDef[] = [
     { kind: 'spell', effects: [{ trigger: 'onPlay', op: 'strikeOpposite', args: { n: 5 } }, { trigger: 'onPlay', op: 'entropy', args: { n: 2 }, chain: true }], text: '주문: 대상 레인의 적 5 피해. 연쇄: 상대 파멸 +2' }),
   // 기본 카드 풀 (덱 구성용 추가 카드)
   u('ash_raider', '잿불 습격자', 'union', '화염술사', null, 2, 3, 2),
-  u('flash_burner', '섬광 분신자', 'union', '화염술사', null, 2, 4, 1, { keywords: ['halfLife:2'], text: '소멸 2' }),
+  u('flash_burner', '섬광 분신자', 'union', '화염술사', null, 2, 4, 2, { keywords: ['halfLife:2'], text: '소멸 2' }),
   u('shield_merc', '방패 용병', 'union', '용병', null, 2, 1, 2, { keywords: ['armor:1'], text: '방어력 1' }),
   u('flare_merc', '신호탄 사수', 'union', '용병', null, 3, 3, 4,
     { upkeep: 1, effects: [{ trigger: 'onPlay', op: 'entropy', args: { n: 2 }, chain: true }], text: '연쇄: 상대 파멸 +2' }),
-  u('blight_miner', '독광 광부', 'union', '용병', 'blight_mine', 5, 6, 6,
+  u('blight_miner', '독광 광부', 'union', '용병', 'blight_mine', 5, 6, 5,
     { upkeep: 2, effects: [{ trigger: 'onPlay', op: 'entropy', args: { n: 2 } }], text: '소환: 상대 파멸 +2' }),
   u('cloud_sage', '구름 현자', 'union', '폭풍술사', null, 3, 2, 3,
     { effects: [{ trigger: 'onPlay', op: 'draw', args: { n: 1 }, chain: true }], text: '연쇄: 1장 드로우' }),
   u('bolt_sniper', '뇌전 저격수', 'union', '폭풍술사', null, 4, 3, 3,
     { effects: [{ trigger: 'onPlay', op: 'strikeOpposite', args: { n: 2 } }], text: '소환: 맞은편 적 2 피해' }),
-  u('alembic_keeper', '증류기 관리인', 'union', '연금술사', null, 3, 2, 2,
+  u('alembic_keeper', '증류기 관리인', 'union', '연금술사', null, 3, 2, 3,
     { keywords: ['charge:2'], effects: [{ trigger: 'onCharge', op: 'entropy', args: { n: 1 } }], text: '기력 2. 충전 시: 상대 파멸 +1' }),
-  u('powder_thrower', '화약 투척병', 'union', '연금술사', null, 4, 3, 2,
+  u('powder_thrower', '화약 투척병', 'union', '연금술사', null, 4, 3, 3,
     { effects: [{ trigger: 'onDeath', op: 'entropy', args: { n: 3 } }], text: '파괴 시: 상대 파멸 +3' }),
-  u('poison_brewer', '독약 제조사', 'union', '연금술사', null, 5, 5, 3,
+  u('poison_brewer', '독약 제조사', 'union', '연금술사', null, 5, 5, 4,
     { keywords: ['halfLife:3'], effects: [{ trigger: 'onPlay', op: 'entropy', args: { n: 2 } }], text: '소멸 3. 소환: 상대 파멸 +2' }),
   u('sp_insight', '번뜩이는 통찰', 'union', '폭풍술사', 'storm_cliff', 1, 0, 0,
     { kind: 'spell', effects: [{ trigger: 'onPlay', op: 'draw', args: { n: 1 } }], text: '주문: 1장 드로우' }),
@@ -79,7 +79,7 @@ export const CARDS: CardDef[] = [
   u('obsidian_golem', '흑요석 골렘', 'covalent', '골렘', 'obsidian_pit', 5, 3, 10, { upkeep: 1 }),
   u('bastion_colossus', '성채 거상', 'covalent', '성기사', null, 6, 6, 8),
   u('oath_breaker', '서약의 파쇄자', 'covalent', '성기사', null, 7, 7, 9),
-  u('elder_colossus', '태고의 거신', 'covalent', '골렘', 'obsidian_pit', 8, 8, 10,
+  u('elder_colossus', '태고의 거신', 'covalent', '골렘', 'obsidian_pit', 8, 8, 9,
     { upkeep: 3, effects: [{ trigger: 'onPlay', op: 'entropy', args: { n: 3 } }], text: '소환: 상대 파멸 +3' }),
   // 장비 (기사단 전용): atk/hp는 장착 대상에 더하는 값
   u('it_stone_mail', '돌비늘 갑옷', 'covalent', '골렘', 'obsidian_pit', 2, 0, 4, { kind: 'item', text: '장착: +0/+4' }),
@@ -102,7 +102,7 @@ export const CARDS: CardDef[] = [
     { keywords: ['armor:1', 'charge:2'], effects: [{ trigger: 'onCharge', op: 'healSelf', args: { n: 2 } }], text: '방어력 1. 기력 2. 충전 시: 체력 2 회복' }),
   u('high_inquisitor', '대심문관', 'covalent', '성기사', null, 7, 4, 6,
     { keywords: ['charge:2'], effects: [{ trigger: 'onCharge', op: 'entropy', args: { n: 2 } }], text: '기력 2. 충전 시: 상대 파멸 +2' }),
-  u('sky_golem', '천공 골렘', 'covalent', '골렘', 'obsidian_pit', 9, 10, 12, { upkeep: 3, keywords: ['armor:1', 'resist:1'], text: '방어력 1. 저항 1' }),
+  u('sky_golem', '천공 골렘', 'covalent', '골렘', 'obsidian_pit', 9, 10, 11, { upkeep: 3, keywords: ['armor:1', 'resist:1'], text: '방어력 1. 저항 1' }),
   u('it_ward_cloak', '결계 망토', 'covalent', '골렘', 'ash_ruins', 2, 0, 3, { kind: 'item', keywords: ['resist:2'], text: '장착: +0/+3, 저항 2' }),
   u('it_hawk_eye', '매의 눈', 'covalent', '숲지기', 'mist_wood', 2, 2, 0,
     { kind: 'item', effects: [{ trigger: 'onPlay', op: 'draw', args: { n: 1 } }], text: '장착: +2/+0. 1장 드로우' }),
@@ -122,7 +122,7 @@ export const CARDS: CardDef[] = [
   u('rift_flicker', '균열의 섬광', 'decay', '심연체', 'abyss_rift', 5, 6, 5, { keywords: ['halfLife:2'], text: '소멸 2' }),
   u('tomb_martyr', '왕릉의 순교자', 'decay', '광신도', 'cursed_tomb', 6, 7, 6,
     { upkeep: 1, keywords: ['halfLife:3'], effects: [{ trigger: 'onPlay', op: 'entropy', args: { n: 2 } }], text: '소멸 3. 소환: 상대 파멸 +2' }),
-  u('doom_reaper', '종말의 사신', 'decay', '광신도', null, 7, 8, 7,
+  u('doom_reaper', '종말의 사신', 'decay', '광신도', null, 7, 8, 6,
     { upkeep: 1, keywords: ['halfLife:2'], effects: [{ trigger: 'onPlay', op: 'strikeOpposite', args: { n: 4 } }], text: '소멸 2. 소환: 맞은편 적 4 피해' }),
   u('void_titan', '공허의 거신', 'decay', '심연체', 'void_gate', 9, 11, 10, { keywords: ['halfLife:2'], text: '소멸 2' }),
   // 기본 카드 풀 (덱 구성용 추가 카드): 망령은 저항, 광신도·심연체는 소멸
@@ -140,11 +140,11 @@ export const CARDS: CardDef[] = [
   u('abyss_phantom', '심연의 환영', 'decay', '심연체', null, 3, 4, 3,
     { keywords: ['halfLife:1'], effects: [{ trigger: 'onPlay', op: 'strikeOpposite', args: { n: 2 } }], text: '소멸 1. 소환: 맞은편 적 2 피해' }),
   u('rune_warden', '룬 수호자', 'decay', '점술사', null, 4, 4, 5, { upkeep: 1, keywords: ['resist:2'], text: '저항 2' }),
-  u('moon_oracle', '달의 신탁자', 'decay', '점술사', null, 4, 2, 2,
+  u('moon_oracle', '달의 신탁자', 'decay', '점술사', null, 4, 2, 3,
     { effects: [{ trigger: 'onPlay', op: 'draw', args: { n: 1 } }, { trigger: 'onDeath', op: 'draw', args: { n: 1 } }], text: '소환: 1장 드로우. 파괴 시: 1장 드로우' }),
   u('doom_bellringer', '파멸의 종지기', 'decay', '광신도', null, 4, 3, 3,
     { keywords: ['charge:2'], effects: [{ trigger: 'onCharge', op: 'entropy', args: { n: 1 } }], text: '기력 2. 충전 시: 상대 파멸 +1' }),
-  u('fate_hunter', '운명 사냥꾼', 'decay', '점술사', null, 5, 4, 4,
+  u('fate_hunter', '운명 사냥꾼', 'decay', '점술사', null, 5, 4, 5,
     { effects: [{ trigger: 'onPlay', op: 'strikeOpposite', args: { n: 2 } }], text: '소환: 맞은편 적 2 피해' }),
   u('cult_raider', '교단 약탈자', 'decay', '광신도', null, 5, 6, 5,
     { keywords: ['halfLife:3'], effects: [{ trigger: 'onDeath', op: 'entropy', args: { n: 1 } }], text: '소멸 3. 파괴 시: 상대 파멸 +1' }),
@@ -158,7 +158,17 @@ export const CARDS: CardDef[] = [
     { upkeep: 2, keywords: ['halfLife:2'], effects: [{ trigger: 'onPlay', op: 'strikeOpposite', args: { n: 2 } }], text: '소멸 2. 소환: 맞은편 적 2 피해' }),
 ];
 
-const byId = new Map(CARDS.map((c) => [c.id, c]));
+// 베이스 카드: 진영마다 하나. 효과는 같고 이름만 다르다 (카드 도감에는 나오지 않고 덱 구성에서 장수만 고른다)
+const base = (faction: Faction, name: string, res: string): CardDef =>
+  ({ id: `base_${faction}`, name, faction, race: '베이스', level: 0, atk: 0, hp: 0, kind: 'base', text: `매 턴 시작에 ${res} +1 (1턴 1장, 2턴 2장… 턴 번호만큼 설치)` });
+export const BASE_CARDS: CardDef[] = [base('union', '마탑 금고', '금화'), base('covalent', '기사단 성소', '신앙'), base('decay', '교단 제단', '영혼')];
+
+const byId = new Map([...CARDS, ...BASE_CARDS].map((c) => [c.id, c]));
+
+// 도구용 (npm run card -- test): 아직 카드 목록에 없는 시험 카드를 잠시 등록한다
+export function registerCard(def: CardDef) {
+  byId.set(def.id, def);
+}
 
 export function getCard(id: string): CardDef {
   const c = byId.get(id);

@@ -304,7 +304,7 @@ editor.addEventListener('change', (ev) => {
   if (!field) return;
   if (['level', 'atk', 'hp', 'upkeep', 'halfLife', 'armor', 'resist', 'charge'].includes(field)) {
     const lo = field === 'hp' || field === 'level' ? 1 : 0;
-    const hi = field === 'upkeep' ? WEIGHTS.maxUpkeep : field === 'level' ? WEIGHTS.maxLevel : field === 'halfLife' ? 4 : field === 'armor' || field === 'resist' || field === 'charge' ? 9 : 99;
+    const hi = field === 'upkeep' ? Math.min(WEIGHTS.maxUpkeep, d.level) : field === 'level' ? WEIGHTS.maxLevel : field === 'halfLife' ? 4 : field === 'armor' || field === 'resist' || field === 'charge' ? 9 : 99;
     (d as any)[field] = clampInt(Number(el.value), lo, hi);
     if (field === 'charge') renderFx(); // '기력 0이라 발동 안 함' 안내 갱신
     refresh(field === 'atk' || field === 'hp' ? field : undefined);

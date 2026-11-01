@@ -8,7 +8,7 @@ export const resourceRules: Record<Faction, ResourceRule> = {
   union: {
     onTurnStart(p) {
       const b = BALANCE.union;
-      const income = Math.min(b.incomeBase + Math.floor(p.turns / b.incomeEvery), b.incomeMax);
+      const income = p.bases * BALANCE.base.income;
       const interest = Math.min(Math.floor(p.pool / b.interestPer), b.interestMax);
       p.pool = Math.min(p.pool + income + interest, b.goldCap);
     },
@@ -17,12 +17,12 @@ export const resourceRules: Record<Faction, ResourceRule> = {
     onTurnStart(p) {
       const b = BALANCE.covalent;
       // 결합: 가진 대지도 성소처럼 신앙을 낸다
-      p.pool = p.lattices + (p.lattices >= b.resonanceAt ? b.resonanceBonus : 0) + p.elements.length * BALANCE.elements.bondPool;
+      p.pool = p.bases * BALANCE.base.income + (p.bases >= b.resonanceAt ? b.resonanceBonus : 0) + p.elements.length * BALANCE.elements.bondPool;
     },
   },
   decay: {
     onTurnStart(p) {
-      p.pool = BALANCE.decay.baseStart + Math.floor(p.turns / BALANCE.decay.baseEvery);
+      p.pool = p.bases * BALANCE.base.income;
     },
   },
 };

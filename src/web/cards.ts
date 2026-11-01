@@ -2,7 +2,7 @@ import type { CardDef, CardKind } from '../engine/types';
 
 export const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
-export const KIND_LABEL: Record<CardKind, string> = { unit: '유닛', item: '장비', spell: '주문' };
+export const KIND_LABEL: Record<CardKind, string> = { unit: '유닛', item: '장비', spell: '주문', base: '베이스' };
 
 export const KEYWORD_INFO: Record<string, [string, string]> = {
   halfLife: ['소멸', '소환 후 내 턴이 N번 시작되면 사라진다'],
@@ -32,7 +32,7 @@ export function cardHTML(def: CardDef, o: { cost?: number; cls?: string; attrs?:
   const cost = o.cost ?? def.level;
   const plus = kind === 'item' ? '+' : '';
   const armor = keywordNum(def, 'armor'), resist = keywordNum(def, 'resist');
-  const stats = kind === 'spell' ? '' : [
+  const stats = kind === 'spell' || kind === 'base' ? '' : [
     stat('atk', plus + def.atk, '공격', '공격력'),
     stat('hp', plus + def.hp, '체력', '체력'),
     armor ? stat('arm', armor, '방어', `방어력: 받는 전투 피해 -${armor}`) : '',
